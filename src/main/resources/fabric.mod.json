@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "pcustomtextures",
+  "version": "${version}",
+  "name": "pcustomtextures",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/pcustomtextures/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "fabric-datagen": [
+      "com.ponuing.pcustomtextures.client.PcustomtexturesDataGenerator"
+    ],
+    "client": [
+      "com.ponuing.pcustomtextures.client.PcustomtexturesClient"
+    ],
+    "main": [
+      "com.ponuing.pcustomtextures.Pcustomtextures"
+    ]
+  },
+  "mixins": [
+    "pcustomtextures.mixins.json",
+    {
+      "config": "pcustomtextures.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
