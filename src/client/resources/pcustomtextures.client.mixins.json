@@ -5,7 +5,11 @@
   "compatibilityLevel": "JAVA_21",
   "client": [
     "EquipmentRendererMixin",
-    "ItemRendererMixin"
+    "ItemRenderLayerStateAccessor",
+    "ItemModelManagerMixin",
+    "ItemRenderStateAccessor",
+    "ItemRendererMixin",
+    "ResourcePackManagerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -10,6 +10,7 @@ public class PcustomtexturesClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        PcustomtexturesModelLoadingPlugin.register();
         NbtRenderOverrideResolver.reload();
 
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->

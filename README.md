@@ -10,8 +10,9 @@ OptiFine CIT compatibility layer for Fabric 1.21.4 (no generated mod resource pa
 
 - `type=item`, `type=armor`
 - `items`, `matchItems`
-- `model` (for item CIT)
-- `texture.<name>` (for armor CIT, including `*_layer_1`, `*_layer_2`, overlays)
+- `model` (item)
+- `tile`, `tiles`, `texture` (item)
+- `texture.<name>` (armor)
 - `weight`
 - `damage`, `damaged`, `stackSize`
 - `enchantments`, `enchantmentIDs`, `enchantmentLevels`
@@ -27,8 +28,9 @@ OptiFine CIT compatibility layer for Fabric 1.21.4 (no generated mod resource pa
 ## Notes
 
 - Item render: inventory, hand, world item entity.
-- Armor render: works through OptiFine-style `texture.<name>` mapping.
-- `type=enchantment` and global `cit.properties` visual effect controls are not implemented.
+- Item `tile/tiles` uses a flat quad renderer (no 3D model geometry).
+- Armor render: uses OptiFine-style `texture.<name>` mapping.
+- `type=enchantment` and global `cit.properties` effects are not implemented.
 
 ## Reload
 
