@@ -1,5 +1,6 @@
 package com.ponuing.pcustomtextures.client;
 
+import com.ponuing.pcustomtextures.Pcustomtextures;
 import net.minecraft.client.render.model.BakedModel;
 import net.minecraft.client.render.model.BakedQuad;
 import net.minecraft.client.render.model.WrapperBakedModel;
@@ -9,9 +10,11 @@ import net.minecraft.util.math.random.Random;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public final class TextureOverrideBakedModel extends WrapperBakedModel {
     private final Sprite sprite;
+    private static final AtomicInteger DEBUG_LOG_COUNT = new AtomicInteger(0);
 
     public TextureOverrideBakedModel(BakedModel wrapped, Sprite sprite) {
         super(wrapped);
@@ -25,6 +28,7 @@ public final class TextureOverrideBakedModel extends WrapperBakedModel {
         }
 
         List<BakedQuad> original = super.getQuads(state, face, random);
+        logDebugIfNeeded(original);
         if (original.isEmpty()) {
             return original;
         }
@@ -92,5 +96,35 @@ public final class TextureOverrideBakedModel extends WrapperBakedModel {
             remapped[vIndex] = Float.floatToRawIntBits(newV);
         }
         return remapped;
+    }
+
+    private void logDebugIfNeeded(List<BakedQuad> original) {
+        if (sprite == null || original == null || original.isEmpty()) {
+            return;
+        }
+        if (DEBUG_LOG_COUNT.get() >= 10) {
+            return;
+        }
+        String spriteId = describeSprite(sprite);
+        if (spriteId == null || !spriteId.contains("optifine_cit")) {
+            return;
+        }
+        int count = DEBUG_LOG_COUNT.getAndIncrement();
+        if (count >= 10) {
+            return;
+        }
+        Sprite quadSprite = original.get(0).getSprite();
+        Pcustomtextures.LOGGER.info("[pcustomtextures][debug] quad override old={} new={} quadCount={}", describeSprite(quadSprite), spriteId, original.size());
+    }
+
+    private static String describeSprite(Sprite sprite) {
+        if (sprite == null) {
+            return "null";
+        }
+        try {
+            return sprite.getContents().getId().toString();
+        } catch (Exception e) {
+            return sprite.toString();
+        }
     }
 }

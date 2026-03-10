@@ -72,6 +72,8 @@ public class ItemModelManagerMixin {
             Sprite resolvedSprite = NbtRenderOverrideResolver.resolveModelTextureSprite(modelId);
             if (resolvedSprite != null) {
                 model = new TextureOverrideBakedModel(model, resolvedSprite);
+            } else if (itemId != null && itemId.toString().contains("shulker")) {
+                Pcustomtextures.LOGGER.warn("[pcustomtextures][debug] model override but sprite missing for item={} model={}", itemId, modelId);
             }
             RenderLayer renderLayer = TexturedRenderLayers.getItemEntityTranslucentCull();
             //Pcustomtextures.LOGGER.info("[pcustomtextures][model] applying model {} to first layer for {}", modelId, itemId);

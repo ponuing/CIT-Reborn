@@ -4,12 +4,13 @@
   "package": "com.ponuing.pcustomtextures.mixin.client",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "AtlasLoaderMixin",
     "EquipmentRendererMixin",
     "ItemRenderLayerStateAccessor",
     "ItemModelManagerMixin",
     "ItemRenderStateAccessor",
     "ItemRendererMixin",
-    "ResourcePackManagerMixin"
+    "SpriteAtlasManagerAtlasPreparationMixin"
   ],
   "injectors": {
     "defaultRequire": 1

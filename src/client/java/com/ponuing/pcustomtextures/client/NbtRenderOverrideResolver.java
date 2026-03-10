@@ -1,7 +1,6 @@
 package com.ponuing.pcustomtextures.client;
 
 import com.ponuing.pcustomtextures.Pcustomtextures;
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.texture.MissingSprite;
 import net.minecraft.client.texture.Sprite;
@@ -33,9 +32,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -50,15 +46,13 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Pattern;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 
 public final class NbtRenderOverrideResolver {
     private static final Identifier ITEM_ATLAS_ID = Identifier.ofVanilla("textures/atlas/items.png");
     private static final CopyOnWriteArrayList<CitRule> RULES = new CopyOnWriteArrayList<>();
     private static volatile Map<Identifier, GeneratedModelDef> GENERATED_ITEM_MODELS = Map.of();
     private static volatile Map<Identifier, Identifier> ITEM_BASE_MODELS = Map.of();
-    private static volatile Map<Identifier, byte[]> VIRTUAL_TEXTURES = Map.of();
+    private static volatile Set<Identifier> EXTRA_ITEM_MODELS = Set.of();
     private static volatile Map<Identifier, List<CitRule>> ITEM_RULES = Map.of();
     private static final int RULE_CACHE_LIMIT = 2048;
     private static final Map<RuleCacheKey, CitRule> RULE_CACHE = java.util.Collections.synchronizedMap(
@@ -78,6 +72,8 @@ public final class NbtRenderOverrideResolver {
                 }
             }
     );
+    private static final java.util.concurrent.atomic.AtomicBoolean INITIAL_LOAD_DONE = new java.util.concurrent.atomic.AtomicBoolean(false);
+    private static final java.util.concurrent.atomic.AtomicInteger SHULKER_DEBUG_COUNT = new java.util.concurrent.atomic.AtomicInteger(0);
 
     private NbtRenderOverrideResolver() {
     }
@@ -90,6 +86,7 @@ public final class NbtRenderOverrideResolver {
         if (stack == null || stack.isEmpty()) {
             return null;
         }
+        ensureLoaded();
         Identifier itemId = Registries.ITEM.getId(stack.getItem());
         //Pcustomtextures.LOGGER.info("[pcustomtextures][item] resolve texture for {} x{}", itemId, stack.getCount());
         CitRule rule = findMatchingRule(stack, false);
@@ -99,9 +96,9 @@ public final class NbtRenderOverrideResolver {
         }
 
         if (rule.sourceTexture() != null) {
-            Identifier virtualTexture = buildVirtualTextureId(rule.ruleKey(), itemId);
-            //Pcustomtextures.LOGGER.info("[pcustomtextures][item] matched rule, using virtual texture {}", virtualTexture);
-            return virtualTexture;
+            Identifier textureId = rule.sourceTexture().id();
+            //Pcustomtextures.LOGGER.info("[pcustomtextures][item] matched rule, using texture {}", textureId);
+            return textureId;
         }
 
         if (rule.itemTextureCandidates().isEmpty()) {
@@ -124,6 +121,7 @@ public final class NbtRenderOverrideResolver {
             return null;
         }
 
+        ensureLoaded();
         CitRule rule = findMatchingRule(stack, false);
         if (rule == null) {
             return null;
@@ -183,36 +181,62 @@ public final class NbtRenderOverrideResolver {
         if (modelId == null) {
             return null;
         }
+        boolean debug = isShulkerModel(modelId);
         Sprite cached = MODEL_SPRITE_CACHE.get(modelId);
         if (cached != null) {
+            /*if (debug) {
+                Pcustomtextures.LOGGER.info("[pcustomtextures][debug] model sprite cache hit model={} sprite={}", modelId, describeSprite(cached));
+            }*/
             return cached;
         }
-        Sprite resolved = resolveModelTextureSpriteInternal(modelId);
+        Sprite resolved = resolveModelTextureSpriteInternal(modelId, debug);
         if (resolved != null) {
             MODEL_SPRITE_CACHE.put(modelId, resolved);
         }
+        /*if (debug) {
+            Pcustomtextures.LOGGER.info("[pcustomtextures][debug] model sprite resolved model={} sprite={}", modelId, describeSprite(resolved));
+        }*/
         return resolved;
     }
 
-    private static Sprite resolveModelTextureSpriteInternal(Identifier modelId) {
+    private static Sprite resolveModelTextureSpriteInternal(Identifier modelId, boolean debug) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null || client.getResourceManager() == null) {
             return null;
         }
-        Identifier modelResource = Identifier.of(modelId.getNamespace(), "models/" + modelId.getPath() + ".json");
+        String modelPath = modelId.getPath();
+        Identifier modelResource = Identifier.of(modelId.getNamespace(), "models/" + modelPath + ".json");
         Resource resource = client.getResourceManager().getResource(modelResource).orElse(null);
+        boolean optifineModel = false;
+        if (resource == null && (modelPath.startsWith("optifine/") || modelPath.startsWith("cit/"))) {
+            optifineModel = true;
+            modelResource = Identifier.of(modelId.getNamespace(), modelPath + ".json");
+            resource = client.getResourceManager().getResource(modelResource).orElse(null);
+        }
         if (resource == null) {
+            /*if (debug) {
+                Pcustomtextures.LOGGER.warn("[pcustomtextures][debug] model json missing {}", modelResource);
+            }*/
             return null;
         }
         try (InputStream in = resource.getInputStream()) {
             String jsonText = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            if (optifineModel) {
+                jsonText = normalizeOptifineModelJson(modelPath, jsonText);
+            }
             JsonElement element = JsonParser.parseString(jsonText);
             if (!element.isJsonObject()) {
+                /*if (debug) {
+                    Pcustomtextures.LOGGER.warn("[pcustomtextures][debug] model json not object {}", modelResource);
+                }*/
                 return null;
             }
             JsonObject obj = element.getAsJsonObject();
             JsonElement texturesElement = obj.get("textures");
             if (texturesElement == null || !texturesElement.isJsonObject()) {
+                /*if (debug) {
+                    Pcustomtextures.LOGGER.warn("[pcustomtextures][debug] model json has no textures {}", modelResource);
+                }*/
                 return null;
             }
             Map<String, String> textures = new HashMap<>();
@@ -223,24 +247,45 @@ public final class NbtRenderOverrideResolver {
                 }
             }
             if (textures.isEmpty()) {
+                /*if (debug) {
+                    Pcustomtextures.LOGGER.warn("[pcustomtextures][debug] model json textures empty {}", modelResource);
+                }*/
                 return null;
             }
             String textureValue = resolveTextureReference(textures);
             if (textureValue == null) {
+                /*if (debug) {
+                    Pcustomtextures.LOGGER.warn("[pcustomtextures][debug] model json texture ref not resolved {}", modelResource);
+                }*/
                 return null;
             }
             Identifier textureId = resolveTextureIdentifier(modelId, textureValue);
+            /*if (debug) {
+                Pcustomtextures.LOGGER.info("[pcustomtextures][debug] model texture ref model={} value={} -> {}", modelId, textureValue, textureId);
+            }*/
             Sprite sprite = resolveSprite(textureId);
             if (!isMissingSprite(sprite)) {
+                /*if (debug) {
+                    Pcustomtextures.LOGGER.info("[pcustomtextures][debug] model sprite found primary {}", describeSprite(sprite));
+                }*/
                 return sprite;
             }
             Identifier alias = resolveOptifineAlias(textureId);
             Sprite aliasSprite = resolveSprite(alias);
             if (!isMissingSprite(aliasSprite)) {
+                /*if (debug) {
+                    Pcustomtextures.LOGGER.info("[pcustomtextures][debug] model sprite found alias {} -> {}", alias, describeSprite(aliasSprite));
+                }*/
                 return aliasSprite;
             }
+            /*if (debug) {
+                Pcustomtextures.LOGGER.warn("[pcustomtextures][debug] model sprite missing primary={} alias={} sprite={} aliasSprite={}", textureId, alias, describeSprite(sprite), describeSprite(aliasSprite));
+            }*/
             return sprite;
         } catch (Exception e) {
+            /*if (debug) {
+                Pcustomtextures.LOGGER.warn("[pcustomtextures][debug] model sprite resolve error {}", modelResource, e);
+            }*/
             return null;
         }
     }
@@ -309,6 +354,25 @@ public final class NbtRenderOverrideResolver {
         return Identifier.of(textureId.getNamespace(), "textures/item/optifine_cit/" + rest);
     }
 
+    private static boolean isShulkerModel(Identifier modelId) {
+        if (modelId == null) {
+            return false;
+        }
+        String path = modelId.getPath();
+        return path.contains("shulker") || path.contains("cit_totem") || path.contains("cit");
+    }
+
+    private static String describeSprite(Sprite sprite) {
+        if (sprite == null) {
+            return "null";
+        }
+        try {
+            return sprite.getContents().getId().toString();
+        } catch (Exception e) {
+            return sprite.toString();
+        }
+    }
+
     private static boolean isMissingSprite(Sprite sprite) {
         if (sprite == null) {
             return true;
@@ -324,11 +388,12 @@ public final class NbtRenderOverrideResolver {
         return GENERATED_ITEM_MODELS;
     }
 
-    public static Map<Identifier, byte[]> getVirtualTextures() {
-        return VIRTUAL_TEXTURES;
+    public static Set<Identifier> getExtraItemModels() {
+        return EXTRA_ITEM_MODELS;
     }
 
     public static Identifier resolveArmorTextureOverride(ItemStack stack, Identifier originalTextureId) {
+        ensureLoaded();
         CitRule rule = findMatchingRule(stack, true);
         if (rule == null || rule.armorTextures().isEmpty() || originalTextureId == null) {
             return null;
@@ -384,129 +449,73 @@ public final class NbtRenderOverrideResolver {
         return null;
     }
 
-    public static void reload() {
+    static void ensureLoaded() {
+        if (INITIAL_LOAD_DONE.get()) {
+            return;
+        }
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null) {
+            return;
+        }
+        ResourceManager manager = client.getResourceManager();
+        if (manager == null) {
+            return;
+        }
+        if (!INITIAL_LOAD_DONE.compareAndSet(false, true)) {
+            return;
+        }
+        reloadInternalFromManager(manager);
+    }
+
+    static void reloadFromManager(ResourceManager manager) {
+        if (manager == null) {
+            return;
+        }
+        INITIAL_LOAD_DONE.set(true);
+        reloadInternalFromManager(manager);
+    }
+
+    private static void reloadInternalFromManager(ResourceManager manager) {
         try {
             //Pcustomtextures.LOGGER.info("[pcustomtextures][model] reload start");
-            Path gameDir = FabricLoader.getInstance().getGameDir();
-            Path resourcepacksDir = gameDir.resolve("resourcepacks");
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client != null) {
-                ITEM_BASE_MODELS = loadItemAssetModels(client.getResourceManager());
-            } else {
-                ITEM_BASE_MODELS = Map.of();
-            }
-            List<CitRule> parsedRules = scanOptifineCitRules(resourcepacksDir);
+            ITEM_BASE_MODELS = loadItemAssetModelsFromManager(manager);
+            List<CitRule> parsedRules = scanOptifineCitRules(manager);
 
             RULES.clear();
             RULES.addAll(parsedRules);
             RULE_CACHE.clear();
             ITEM_RULES = indexRulesByItem(parsedRules);
             GENERATED_ITEM_MODELS = buildGeneratedItemModelMap(parsedRules, ITEM_BASE_MODELS);
-            Map<Identifier, byte[]> virtualResources = new HashMap<>(buildVirtualTextures(GENERATED_ITEM_MODELS));
-            virtualResources.putAll(buildOptifineCitVirtualResources(resourcepacksDir));
-            VIRTUAL_TEXTURES = Map.copyOf(virtualResources);
-            CitVirtualResourcePack.updateMappings(VIRTUAL_TEXTURES);
+            EXTRA_ITEM_MODELS = collectExplicitItemModels(parsedRules);
             MODEL_SPRITE_CACHE.clear();
 
-            Pcustomtextures.LOGGER.info("[pcustomtextures][model] loaded rules={}, genModels={}, virtualTextures={}", parsedRules.size(), GENERATED_ITEM_MODELS.size(), VIRTUAL_TEXTURES.size());
-            if (client != null) {
-                client.execute(client::reloadResources);
-            }
+            Pcustomtextures.LOGGER.info("[pcustomtextures][model] loaded rules={}, genModels={}, explicitModels={}", parsedRules.size(), GENERATED_ITEM_MODELS.size(), EXTRA_ITEM_MODELS.size());
         } catch (Exception e) {
+            INITIAL_LOAD_DONE.set(false);
             RULES.clear();
             Pcustomtextures.LOGGER.error("Failed to reload OptiFine CIT rules", e);
         }
     }
 
-    private static List<CitRule> scanOptifineCitRules(Path resourcepacksDir) throws IOException {
+    private static List<CitRule> scanOptifineCitRules(ResourceManager manager) {
         List<CitRule> rules = new ArrayList<>();
-        if (Files.notExists(resourcepacksDir)) {
+        if (manager == null) {
             return rules;
         }
 
-        try (var packs = Files.list(resourcepacksDir)) {
-            for (Path pack : packs.toList()) {
-                String fileName = pack.getFileName().toString().toLowerCase(Locale.ROOT);
-                if (Files.isDirectory(pack)) {
-                    scanDirectoryPack(pack, rules);
-                } else if (fileName.endsWith(".zip")) {
-                    scanZipPack(pack, rules);
-                }
+        ResourceFinder finder = new ResourceFinder("optifine/cit", ".properties");
+        TextureReader reader = (id) -> readFromManager(manager, id);
+        for (Map.Entry<Identifier, Resource> entry : finder.findResources(manager).entrySet()) {
+            Identifier id = entry.getKey();
+            byte[] bytes = readResourceBytes(entry.getValue());
+            if (bytes == null) {
+                continue;
             }
+            parseProperties(id.getNamespace(), id.getPath(), bytes, rules, reader);
         }
 
         rules.sort(Comparator.comparingInt(CitRule::weight).reversed());
         return rules;
-    }
-
-    private static void scanDirectoryPack(Path packDir, List<CitRule> out) {
-        Path assetsDir = packDir.resolve("assets");
-        if (Files.notExists(assetsDir)) {
-            return;
-        }
-
-        TextureReader reader = (id) -> readFromDirectory(packDir, id);
-
-        try (var namespaces = Files.list(assetsDir)) {
-            for (Path namespaceDir : namespaces.toList()) {
-                if (!Files.isDirectory(namespaceDir)) {
-                    continue;
-                }
-
-                String namespace = namespaceDir.getFileName().toString();
-                Path citDir = namespaceDir.resolve(Paths.get("optifine", "cit"));
-                if (Files.notExists(citDir)) {
-                    continue;
-                }
-
-                try (var walk = Files.walk(citDir)) {
-                    for (Path file : walk.toList()) {
-                        if (!Files.isRegularFile(file) || !file.toString().toLowerCase(Locale.ROOT).endsWith(".properties")) {
-                            continue;
-                        }
-
-                        byte[] propsBytes = Files.readAllBytes(file);
-                        String propsPath = toUnixPath(packDir.relativize(file));
-                        parseProperties(namespace, propsPath, propsBytes, out, reader);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            //Pcustomtextures.LOGGER.warn("Failed to scan directory pack {}", packDir, e);
-        }
-    }
-
-    private static void scanZipPack(Path zipPath, List<CitRule> out) {
-        try (ZipFile zip = new ZipFile(zipPath.toFile())) {
-            TextureReader reader = (id) -> readFromZip(zip, id);
-            List<? extends ZipEntry> entries = zip.stream().toList();
-            for (ZipEntry entry : entries) {
-                if (entry.isDirectory()) {
-                    continue;
-                }
-
-                String name = entry.getName();
-                String lower = name.toLowerCase(Locale.ROOT);
-                if (!lower.endsWith(".properties") || !name.contains("/optifine/cit/")) {
-                    continue;
-                }
-
-                String[] parts = name.split("/");
-                if (parts.length < 4 || !parts[0].equals("assets")) {
-                    continue;
-                }
-
-                String namespace = parts[1];
-                byte[] propsBytes = readZipEntry(zip, name).orElse(null);
-                if (propsBytes == null) {
-                    continue;
-                }
-
-                parseProperties(namespace, name, propsBytes, out, reader);
-            }
-        } catch (Exception e) {
-            //Pcustomtextures.LOGGER.warn("Failed to scan zip pack {}", zipPath, e);
-        }
     }
 
     private static void parseProperties(String defaultNamespace, String propertiesPath, byte[] propertiesBytes, List<CitRule> out, TextureReader reader) {
@@ -531,7 +540,8 @@ public final class NbtRenderOverrideResolver {
         List<Identifier> itemTextureCandidates = new ArrayList<>();
         Map<String, List<Identifier>> armorTextures = new HashMap<>();
         SourceTexture sourceTexture = null;
-        String ruleKey = sha1Hex(propertiesPath == null ? "unknown" : propertiesPath.replace('\\', '/'));
+        String normalizedPath = propertiesPath == null ? "unknown" : propertiesPath.replace('\\', '/');
+        String ruleKey = sha1Hex((defaultNamespace == null ? "" : defaultNamespace + ":") + normalizedPath);
 
         if (type.equals("item")) {
             String modelRaw = properties.getProperty("model");
@@ -621,22 +631,31 @@ public final class NbtRenderOverrideResolver {
             for (Identifier itemId : rule.items()) {
                 Identifier modelId = buildGeneratedModelId(rule.ruleKey(), itemId);
                 Identifier parent = baseModels.getOrDefault(itemId, Identifier.ofVanilla("item/generated"));
-                Identifier virtualTexture = buildVirtualTextureId(rule.ruleKey(), itemId);
-                //Pcustomtextures.LOGGER.info("[pcustomtextures][model] gen model for {} parent={} virtualTex={} sourceTex={} bytes={}", itemId, parent, virtualTexture, rule.sourceTexture().id(), rule.sourceTexture().bytes().length);
-                map.put(modelId, new GeneratedModelDef(parent, virtualTexture, rule.sourceTexture()));
+                Identifier textureId = rule.sourceTexture().id();
+                //Pcustomtextures.LOGGER.info("[pcustomtextures][model] gen model for {} parent={} texture={} sourceTex={} bytes={}", itemId, parent, textureId, rule.sourceTexture().id(), rule.sourceTexture().bytes().length);
+                map.put(modelId, new GeneratedModelDef(parent, textureId, rule.sourceTexture()));
             }
         }
         return Map.copyOf(map);
     }
 
+    private static Set<Identifier> collectExplicitItemModels(List<CitRule> rules) {
+        if (rules == null || rules.isEmpty()) {
+            return Set.of();
+        }
+        Set<Identifier> result = new HashSet<>();
+        for (CitRule rule : rules) {
+            Identifier modelId = rule.itemModelId();
+            if (modelId != null) {
+                result.add(modelId);
+            }
+        }
+        return result.isEmpty() ? Set.of() : Set.copyOf(result);
+    }
+
     private static Identifier buildGeneratedModelId(String ruleKey, Identifier itemId) {
         String itemPath = itemId.getNamespace() + "/" + itemId.getPath();
         return Identifier.of("pcustomtextures", "item/cit/" + ruleKey + "/" + itemPath);
-    }
-
-    private static Identifier buildVirtualTextureId(String ruleKey, Identifier itemId) {
-        String itemPath = itemId.getNamespace() + "/" + itemId.getPath();
-        return Identifier.of("pcustomtextures", "textures/item/cit/" + ruleKey + "/" + itemPath + ".png");
     }
 
     private static String sha1Hex(String input) {
@@ -653,137 +672,19 @@ public final class NbtRenderOverrideResolver {
         }
     }
 
-    private static Map<Identifier, byte[]> buildVirtualTextures(Map<Identifier, GeneratedModelDef> models) {
-        Map<Identifier, byte[]> map = new HashMap<>();
-        for (GeneratedModelDef def : models.values()) {
-            map.put(def.virtualTextureId(), def.sourceTexture().bytes());
-        }
-        return Map.copyOf(map);
-    }
-
-    private static Map<Identifier, byte[]> buildOptifineCitVirtualResources(Path resourcepacksDir) {
-        Map<Identifier, byte[]> map = new HashMap<>();
-        if (Files.notExists(resourcepacksDir)) {
-            return map;
-        }
-
-        try (var packs = Files.list(resourcepacksDir)) {
-            for (Path pack : packs.toList()) {
-                String fileName = pack.getFileName().toString().toLowerCase(Locale.ROOT);
-                if (Files.isDirectory(pack)) {
-                    addOptifineCitResourcesFromDirectory(pack, map);
-                } else if (fileName.endsWith(".zip")) {
-                    addOptifineCitResourcesFromZip(pack, map);
-                }
-            }
-        } catch (Exception e) {
-            //Pcustomtextures.LOGGER.warn("Failed to build OptiFine CIT virtual resources", e);
-        }
-
-        return map;
-    }
-
-    private static void addOptifineCitResourcesFromDirectory(Path packDir, Map<Identifier, byte[]> out) {
-        Path assetsDir = packDir.resolve("assets");
-        if (Files.notExists(assetsDir)) {
-            return;
-        }
-
-        try (var namespaces = Files.list(assetsDir)) {
-            for (Path namespaceDir : namespaces.toList()) {
-                if (!Files.isDirectory(namespaceDir)) {
-                    continue;
-                }
-
-                String namespace = namespaceDir.getFileName().toString();
-                Path citDir = namespaceDir.resolve(Paths.get("optifine", "cit"));
-                if (Files.notExists(citDir)) {
-                    continue;
-                }
-
-                try (var walk = Files.walk(citDir)) {
-                    for (Path file : walk.toList()) {
-                        if (!Files.isRegularFile(file)) {
-                            continue;
-                        }
-                        String rel = toUnixPath(namespaceDir.relativize(file));
-                        byte[] bytes = Files.readAllBytes(file);
-                        mapOptifineCitResource(out, namespace, rel, bytes);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            //Pcustomtextures.LOGGER.warn("Failed to scan OptiFine CIT files in {}", packDir, e);
-        }
-    }
-
-    private static void addOptifineCitResourcesFromZip(Path zipPath, Map<Identifier, byte[]> out) {
-        try (ZipFile zip = new ZipFile(zipPath.toFile())) {
-            for (ZipEntry entry : zip.stream().toList()) {
-                if (entry.isDirectory()) {
-                    continue;
-                }
-
-                String name = entry.getName().replace('\\', '/');
-                String lower = name.toLowerCase(Locale.ROOT);
-                if (!lower.contains("/optifine/cit/") || !lower.startsWith("assets/")) {
-                    continue;
-                }
-
-                String[] parts = name.split("/");
-                if (parts.length < 4) {
-                    continue;
-                }
-                String namespace = parts[1];
-                String rel = String.join("/", java.util.Arrays.copyOfRange(parts, 2, parts.length));
-                byte[] bytes = readZipEntry(zip, name).orElse(null);
-                if (bytes == null) {
-                    continue;
-                }
-                mapOptifineCitResource(out, namespace, rel, bytes);
-            }
-        } catch (Exception e) {
-            //Pcustomtextures.LOGGER.warn("Failed to scan OptiFine CIT zip {}", zipPath, e);
-        }
-    }
-
-    private static void mapOptifineCitResource(Map<Identifier, byte[]> out, String namespace, String relPath, byte[] bytes) {
-        if (bytes == null || relPath == null) {
-            return;
-        }
-        String lower = relPath.toLowerCase(Locale.ROOT);
-        if (lower.endsWith(".properties")) {
-            return;
-        }
-
-        if (lower.endsWith(".png") || lower.endsWith(".png.mcmeta")) {
-            Identifier id = Identifier.of(namespace, "textures/" + relPath);
-            out.putIfAbsent(id, bytes);
-            addOptifineItemAlias(out, namespace, relPath, bytes);
-            return;
-        }
-
-        if (lower.endsWith(".json")) {
-            byte[] updated = updateOptifineModelJson(namespace, relPath, bytes);
-            Identifier id = Identifier.of(namespace, "models/" + relPath);
-            out.putIfAbsent(id, updated != null ? updated : bytes);
-        }
-    }
-
-    private static byte[] updateOptifineModelJson(String namespace, String relPath, byte[] bytes) {
-        if (relPath == null || !relPath.startsWith("optifine/cit/")) {
-            return null;
+    static String normalizeOptifineModelJson(String relPath, String jsonText) {
+        if (relPath == null || !relPath.startsWith("optifine/cit/") || jsonText == null || jsonText.isBlank()) {
+            return jsonText;
         }
         try {
-            String jsonText = new String(bytes, StandardCharsets.UTF_8);
             JsonElement element = JsonParser.parseString(jsonText);
             if (!element.isJsonObject()) {
-                return null;
+                return jsonText;
             }
             JsonObject obj = element.getAsJsonObject();
             JsonElement texturesElement = obj.get("textures");
             if (texturesElement == null || !texturesElement.isJsonObject()) {
-                return null;
+                return jsonText;
             }
             JsonObject textures = texturesElement.getAsJsonObject();
             int slash = relPath.lastIndexOf('/');
@@ -797,22 +698,25 @@ public final class NbtRenderOverrideResolver {
                 String tex = value.getAsString();
                 String resolved = resolveOptifineTexturePath(dir, tex);
                 if (resolved != null) {
-                    String itemPath = toOptifineItemAliasPath(resolved);
-                    textures.addProperty(entry.getKey(), itemPath != null ? itemPath : resolved);
+                    textures.addProperty(entry.getKey(), resolved);
                     changed = true;
                 }
             }
-            if (!changed) {
-                return null;
-            }
-            return obj.toString().getBytes(StandardCharsets.UTF_8);
+            return changed ? obj.toString() : jsonText;
         } catch (Exception e) {
-            return null;
+            return jsonText;
         }
     }
 
     private static String resolveOptifineTexturePath(String dir, String tex) {
         if (tex == null || tex.isBlank()) {
+            return null;
+        }
+        if (tex.startsWith("textures/")) {
+            String trimmed = tex.substring("textures/".length());
+            if (trimmed.startsWith("optifine/cit/")) {
+                return trimmed;
+            }
             return null;
         }
         if (tex.startsWith("./")) {
@@ -827,34 +731,23 @@ public final class NbtRenderOverrideResolver {
         return dir + "/" + tex;
     }
 
-    private static void addOptifineItemAlias(Map<Identifier, byte[]> out, String namespace, String relPath, byte[] bytes) {
-        if (relPath == null || !relPath.startsWith("optifine/cit/")) {
-            return;
-        }
-        String rest = relPath.substring("optifine/cit/".length());
-        Identifier alias = Identifier.of(namespace, "textures/item/optifine_cit/" + rest);
-        out.putIfAbsent(alias, bytes);
-    }
-
-    private static String toOptifineItemAliasPath(String resolvedPath) {
-        if (resolvedPath == null || !resolvedPath.startsWith("optifine/cit/")) {
-            return null;
-        }
-        String rest = resolvedPath.substring("optifine/cit/".length());
-        return "item/optifine_cit/" + rest;
-    }
-
-    private static Map<Identifier, Identifier> loadItemAssetModels(ResourceManager manager) {
+    private static Map<Identifier, Identifier> loadItemAssetModelsFromManager(ResourceManager manager) {
         if (manager == null) {
             return Map.of();
         }
 
         Map<Identifier, Identifier> result = new HashMap<>();
         ResourceFinder finder = ResourceFinder.json("items");
-        Map<Identifier, Resource> resources = finder.findResources(manager);
-        for (Map.Entry<Identifier, Resource> entry : resources.entrySet()) {
-            Identifier itemId = entry.getKey();
-            try (InputStream in = entry.getValue().getInputStream();
+        for (Map.Entry<Identifier, Resource> entry : finder.findResources(manager).entrySet()) {
+            Identifier itemId = finder.toResourceId(entry.getKey());
+            if (itemId == null) {
+                continue;
+            }
+            byte[] bytes = readResourceBytes(entry.getValue());
+            if (bytes == null) {
+                continue;
+            }
+            try (InputStream in = new ByteArrayInputStream(bytes);
                  InputStreamReader reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
                 JsonElement json = JsonParser.parseReader(reader);
                 if (!json.isJsonObject()) {
@@ -1091,10 +984,12 @@ public final class NbtRenderOverrideResolver {
             if (!matchesRule(rule, stack, fullStackNbt, componentsNbt)) {
                 continue;
             }
+            debugShulkerMatch(itemId, fullStackNbt, rule, true);
             RULE_CACHE.put(cacheKey, rule);
             return rule;
         }
 
+        debugShulkerMatch(itemId, fullStackNbt, null, false);
         RULE_CACHE.put(cacheKey, CitRule.NO_MATCH);
         return null;
     }
@@ -1249,6 +1144,59 @@ public final class NbtRenderOverrideResolver {
             }
         }
         return false;
+    }
+
+    private static void debugShulkerMatch(Identifier itemId, NbtCompound fullStackNbt, CitRule rule, boolean matched) {
+        if (itemId == null || itemId.getPath() == null || !itemId.getPath().contains("shulker")) {
+            return;
+        }
+        int count = SHULKER_DEBUG_COUNT.getAndIncrement();
+        if (count >= 10) {
+            return;
+        }
+        String summary = summarizeShulkerContents(fullStackNbt);
+        if (matched && rule != null) {
+            Pcustomtextures.LOGGER.info("[pcustomtextures][debug] shulker rule matched item={} model={} summary={}", itemId, rule.itemModelId(), summary);
+        } else if (!matched) {
+            Pcustomtextures.LOGGER.info("[pcustomtextures][debug] shulker no rule match item={} summary={}", itemId, summary);
+        }
+    }
+
+    private static String summarizeShulkerContents(NbtCompound fullStackNbt) {
+        if (fullStackNbt == null) {
+            return "nbt=null";
+        }
+        if (!fullStackNbt.contains("BlockEntityTag", NbtElement.COMPOUND_TYPE)) {
+            return "BlockEntityTag=missing";
+        }
+        NbtCompound blockEntity = fullStackNbt.getCompound("BlockEntityTag");
+        if (!blockEntity.contains("Items", NbtElement.LIST_TYPE)) {
+            return "BlockEntityTag.Items=missing";
+        }
+        NbtList items = blockEntity.getList("Items", NbtElement.COMPOUND_TYPE);
+        String slot0 = null;
+        String ench0 = null;
+        for (NbtElement element : items) {
+            if (!(element instanceof NbtCompound entry)) {
+                continue;
+            }
+            int slot = entry.getByte("Slot");
+            if (slot != 0) {
+                continue;
+            }
+            slot0 = entry.getString("id");
+            if (entry.contains("tag", NbtElement.COMPOUND_TYPE)) {
+                NbtCompound tag = entry.getCompound("tag");
+                if (tag.contains("Enchantments", NbtElement.LIST_TYPE)) {
+                    NbtList enchList = tag.getList("Enchantments", NbtElement.COMPOUND_TYPE);
+                    if (!enchList.isEmpty() && enchList.get(0) instanceof NbtCompound ench) {
+                        ench0 = ench.getString("id") + ":" + ench.getInt("lvl");
+                    }
+                }
+            }
+            break;
+        }
+        return "slot0Id=" + (slot0 == null ? "null" : slot0) + ",slot0Ench=" + (ench0 == null ? "null" : ench0);
     }
 
     private static boolean matchesListElement(NbtElement element, List<ListMatcher> matchers) {
@@ -1546,14 +1494,26 @@ public final class NbtRenderOverrideResolver {
         return Identifier.tryParse(raw.contains(":") ? raw : "minecraft:" + raw);
     }
 
-    private static Optional<byte[]> readZipEntry(ZipFile zip, String rel) {
-        ZipEntry entry = zip.getEntry(rel);
-        if (entry == null || entry.isDirectory()) {
+    private static byte[] readResourceBytes(Resource resource) {
+        if (resource == null) {
+            return null;
+        }
+        try (InputStream in = resource.getInputStream()) {
+            return in.readAllBytes();
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private static Optional<byte[]> readFromManager(ResourceManager manager, Identifier id) {
+        if (manager == null || id == null) {
             return Optional.empty();
         }
-        try (InputStream in = zip.getInputStream(entry)) {
-            return Optional.of(in.readAllBytes());
-        } catch (IOException e) {
+        try {
+            Resource resource = manager.getResource(id).orElse(null);
+            byte[] bytes = readResourceBytes(resource);
+            return bytes != null ? Optional.of(bytes) : Optional.empty();
+        } catch (Exception e) {
             return Optional.empty();
         }
     }
@@ -1583,10 +1543,6 @@ public final class NbtRenderOverrideResolver {
             result.add(part);
         }
         return String.join("/", result);
-    }
-
-    private static String toUnixPath(Path path) {
-        return path.toString().replace('\\', '/');
     }
 
     private enum SourceNbt {
@@ -1624,7 +1580,7 @@ public final class NbtRenderOverrideResolver {
     ) {
     }
 
-    public record GeneratedModelDef(Identifier parentModelId, Identifier virtualTextureId, SourceTexture sourceTexture) {
+    public record GeneratedModelDef(Identifier parentModelId, Identifier textureId, SourceTexture sourceTexture) {
     }
 
     private record SourceTexture(Identifier id, byte[] bytes) {
@@ -1645,23 +1601,6 @@ public final class NbtRenderOverrideResolver {
             }
         }
         return null;
-    }
-
-    private static Optional<byte[]> readFromDirectory(Path packDir, Identifier id) {
-        Path file = packDir.resolve("assets").resolve(id.getNamespace()).resolve(id.getPath());
-        if (!Files.isRegularFile(file)) {
-            return Optional.empty();
-        }
-        try {
-            return Optional.of(Files.readAllBytes(file));
-        } catch (IOException e) {
-            return Optional.empty();
-        }
-    }
-
-    private static Optional<byte[]> readFromZip(ZipFile zip, Identifier id) {
-        String rel = "assets/" + id.getNamespace() + "/" + id.getPath();
-        return readZipEntry(zip, rel);
     }
 
     private record PathMatcherRule(SourceNbt source, String path, ValueMatcher matcher) {
