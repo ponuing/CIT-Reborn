@@ -10,6 +10,7 @@ import net.minecraft.resource.Resource;
 import net.minecraft.resource.ResourceManager;
 import net.minecraft.util.Identifier;
 import com.ponuing.pcustomtextures.Pcustomtextures;
+import com.ponuing.pcustomtextures.client.item.ItemCitResolver;
 
 import java.io.InputStream;
 import java.io.StringReader;
@@ -27,12 +28,12 @@ public final class PcustomtexturesModelLoadingPlugin {
     }
 
     private static void initialize(ModelLoadingPlugin.Context context) {
-        final Map<Identifier, NbtRenderOverrideResolver.GeneratedModelDef>[] modelsRef = new Map[]{NbtRenderOverrideResolver.getGeneratedItemModels()};
-        final Set<Identifier>[] extraModelsRef = new Set[]{NbtRenderOverrideResolver.getExtraItemModels()};
+        final Map<Identifier, ItemCitResolver.GeneratedModelDef>[] modelsRef = new Map[]{ItemCitResolver.getGeneratedItemModels()};
+        final Set<Identifier>[] extraModelsRef = new Set[]{ItemCitResolver.getExtraItemModels()};
         if (modelsRef[0].isEmpty() && extraModelsRef[0].isEmpty()) {
-            NbtRenderOverrideResolver.ensureLoaded();
-            modelsRef[0] = NbtRenderOverrideResolver.getGeneratedItemModels();
-            extraModelsRef[0] = NbtRenderOverrideResolver.getExtraItemModels();
+            ItemCitResolver.ensureLoaded();
+            modelsRef[0] = ItemCitResolver.getGeneratedItemModels();
+            extraModelsRef[0] = ItemCitResolver.getExtraItemModels();
         }
         if (modelsRef[0].isEmpty() && extraModelsRef[0].isEmpty()) {
             return;
@@ -45,7 +46,7 @@ public final class PcustomtexturesModelLoadingPlugin {
         context.addModels(allModels);
         context.modifyModelOnLoad().register(ModelModifier.OVERRIDE_PHASE, (model, ctx) -> {
             Identifier id = ctx.id();
-            NbtRenderOverrideResolver.GeneratedModelDef def = modelsRef[0].get(id);
+            ItemCitResolver.GeneratedModelDef def = modelsRef[0].get(id);
             if (def == null) {
                 if (!extraModels.contains(id)) {
                     return model;
@@ -56,10 +57,10 @@ public final class PcustomtexturesModelLoadingPlugin {
 
             String parentString = def.parentModelId().toString();
             String textureString = toModelTextureString(def.textureId());
-            String json = "{\"parent\":\"" + parentString + "\",\"textures\":{\"layer0\":\"" + textureString + "\"}}";
-            //Pcustomtextures.LOGGER.info("[pcustomtextures][model] build model {} parent={} texture={}", id, parentString, textureString);
-            UnbakedModel parsed = UnbakedModelDeserializer.deserialize(new StringReader(json));
-            return parsed != null ? parsed : model;
+        String json = "{\"parent\":\"" + parentString + "\",\"textures\":{\"layer0\":\"" + textureString + "\"}}";
+        //Pcustomtextures.LOGGER.info("[pcustomtextures][model] build model {} parent={} texture={}", id, parentString, textureString);
+        UnbakedModel parsed = UnbakedModelDeserializer.deserialize(new StringReader(json));
+        return parsed != null ? parsed : model;
         });
     }
 
@@ -124,7 +125,7 @@ public final class PcustomtexturesModelLoadingPlugin {
         }
         try (InputStream in = resource.getInputStream()) {
             String jsonText = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            jsonText = NbtRenderOverrideResolver.normalizeOptifineModelJson(path, jsonText);
+            jsonText = ItemCitResolver.normalizeOptifineModelJson(path, jsonText);
             return JsonUnbakedModel.deserialize(new StringReader(jsonText));
         } catch (Exception e) {
             Pcustomtextures.LOGGER.warn("[pcustomtextures][model] failed to load optifine model {}", id, e);

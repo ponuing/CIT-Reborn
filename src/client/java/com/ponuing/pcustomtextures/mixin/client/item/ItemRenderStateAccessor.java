@@ -1,4 +1,4 @@
-package com.ponuing.pcustomtextures.mixin.client;
+package com.ponuing.pcustomtextures.mixin.client.item;
 
 import net.minecraft.client.render.item.ItemRenderState;
 import org.spongepowered.asm.mixin.Mixin;

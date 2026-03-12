@@ -1,6 +1,6 @@
-package com.ponuing.pcustomtextures.mixin.client;
+package com.ponuing.pcustomtextures.mixin.client.armor;
 
-import com.ponuing.pcustomtextures.client.NbtRenderOverrideResolver;
+import com.ponuing.pcustomtextures.client.armor.ArmorCitResolver;
 import net.minecraft.client.model.Model;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.entity.equipment.EquipmentModel;
@@ -34,7 +34,7 @@ public class EquipmentRendererMixin {
             Identifier playerTexture
     ) {
         Identifier original = (Identifier) function.apply(key);
-        Identifier override = NbtRenderOverrideResolver.resolveArmorTextureOverride(stack, original);
+        Identifier override = ArmorCitResolver.resolveArmorTextureOverride(stack, original);
         return override != null ? override : original;
     }
 }

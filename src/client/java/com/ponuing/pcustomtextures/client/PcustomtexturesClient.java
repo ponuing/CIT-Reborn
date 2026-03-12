@@ -6,6 +6,8 @@ import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
 import net.minecraft.resource.ResourceManager;
 import net.minecraft.resource.ResourceType;
 import net.minecraft.util.Identifier;
+
+import com.ponuing.pcustomtextures.client.item.ItemCitResolver;
 public class PcustomtexturesClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
@@ -18,7 +20,7 @@ public class PcustomtexturesClient implements ClientModInitializer {
 
             @Override
             public void reload(ResourceManager manager) {
-                NbtRenderOverrideResolver.reloadFromManager(manager);
+                ItemCitResolver.reloadFromManager(manager);
             }
         });
     }

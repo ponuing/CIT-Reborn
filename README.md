@@ -1,6 +1,6 @@
-# pcustomtextures
+# P-CIT
 
-OptiFine CIT compatibility layer for Fabric 1.21.4 (no generated mod resource pack).
+OptiFine CIT compatibility layer for Fabric 1.21.4.
 
 ## Supported CIT sources
 
@@ -8,16 +8,16 @@ OptiFine CIT compatibility layer for Fabric 1.21.4 (no generated mod resource pa
 
 ## Supported properties
 
-- `type=item`, `type=armor`
+- `type=item`, `type=armor`, `type=elytra`
 - `items`, `matchItems`
-- `model` (item)
-- `tile`, `tiles`, `texture` (item)
+- `model`, `model.<name>` (item)
+- `tile`, `tiles`, `texture`, `texture.<name>` (item)
 - `texture.<name>` (armor)
 - `weight`
 - `damage`, `damaged`, `stackSize`
 - `enchantments`, `enchantmentIDs`, `enchantmentLevels`
 - `potion`, `unbreakable`
-- `nbt.*`, `components.*`
+- `nbt.*`, `components.*` (alias: `component.*`)
 
 ## Match modes
 
@@ -31,7 +31,3 @@ OptiFine CIT compatibility layer for Fabric 1.21.4 (no generated mod resource pa
 - Item `tile/tiles` uses a flat quad renderer (no 3D model geometry).
 - Armor render: uses OptiFine-style `texture.<name>` mapping.
 - `type=enchantment` and global `cit.properties` effects are not implemented.
-
-## Reload
-
-- `/pcustomtextures reload`

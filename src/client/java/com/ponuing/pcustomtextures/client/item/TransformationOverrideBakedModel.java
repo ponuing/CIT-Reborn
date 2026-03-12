@@ -1,4 +1,4 @@
-package com.ponuing.pcustomtextures.client;
+package com.ponuing.pcustomtextures.client.item;
 
 import net.minecraft.client.render.model.BakedModel;
 import net.minecraft.client.render.model.WrapperBakedModel;

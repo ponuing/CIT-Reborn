@@ -1,10 +1,11 @@
-package com.ponuing.pcustomtextures.mixin.client;
+package com.ponuing.pcustomtextures.mixin.client.item;
 
 import com.ponuing.pcustomtextures.Pcustomtextures;
-import com.ponuing.pcustomtextures.client.MergedTransformationBakedModel;
-import com.ponuing.pcustomtextures.client.NbtRenderOverrideResolver;
-import com.ponuing.pcustomtextures.client.TextureOverrideBakedModel;
-import com.ponuing.pcustomtextures.client.TransformationOverrideBakedModel;
+import com.ponuing.pcustomtextures.client.item.ItemCitResolver;
+import com.ponuing.pcustomtextures.client.item.MergedTransformationBakedModel;
+import com.ponuing.pcustomtextures.client.item.NamedTextureOverrideBakedModel;
+import com.ponuing.pcustomtextures.client.item.TextureOverrideBakedModel;
+import com.ponuing.pcustomtextures.client.item.TransformationOverrideBakedModel;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.item.ItemModelManager;
 import net.minecraft.client.render.RenderLayer;
@@ -30,6 +31,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.lang.reflect.Field;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -62,23 +64,39 @@ public class ItemModelManagerMixin {
         }
 
         Identifier itemId = net.minecraft.registry.Registries.ITEM.getId(stack.getItem());
-        NbtRenderOverrideResolver.HandMatch handMatch = NbtRenderOverrideResolver.HandMatch.ANY;
+        ItemCitResolver.HandMatch handMatch = ItemCitResolver.HandMatch.ANY;
         if (mode == ModelTransformationMode.GUI) {
-            handMatch = NbtRenderOverrideResolver.HandMatch.MAIN;
+            handMatch = ItemCitResolver.HandMatch.MAIN;
         } else if (leftHand != null) {
-            handMatch = leftHand ? NbtRenderOverrideResolver.HandMatch.OFF : NbtRenderOverrideResolver.HandMatch.MAIN;
+            handMatch = leftHand ? ItemCitResolver.HandMatch.OFF : ItemCitResolver.HandMatch.MAIN;
         }
-        Identifier modelId = NbtRenderOverrideResolver.resolveItemModelOverride(stack, handMatch);
-        Identifier textureId = NbtRenderOverrideResolver.resolveItemTextureOverride(stack, handMatch);
+        ItemCitResolver.ItemOverride override = ItemCitResolver.resolveItemOverride(stack, handMatch);
+        if (override == null) {
+            return;
+        }
+        Identifier modelId = override.modelId();
+        Identifier textureId = override.textureId();
+        Map<String, Identifier> namedTextures = override.namedTextures();
+        Map<String, Identifier> namedModels = override.namedModels();
         ItemRenderStateAccessor accessor = (ItemRenderStateAccessor) renderState;
         int count = accessor.pcustomtextures$getLayerCount();
         ItemRenderState.LayerRenderState layer = count > 0 ? accessor.pcustomtextures$getLayers()[0] : null;
         ItemRenderLayerStateAccessor layerAccessor = layer != null ? (ItemRenderLayerStateAccessor) layer : null;
         boolean hadSpecialRenderer = layerAccessor != null && layerAccessor.pcustomtextures$getSpecialModelType() != null;
+        boolean hasNamedOverrides = (namedTextures != null && !namedTextures.isEmpty())
+                || (namedModels != null && !namedModels.isEmpty());
 
-        if (layerAccessor != null && textureId != null && modelId == null && hadSpecialRenderer) {
+        if (layerAccessor != null && textureId != null && modelId == null && hadSpecialRenderer && !hasNamedOverrides) {
             if (applySpecialTextureOverride(layerAccessor, textureId)) {
                 return;
+            }
+        }
+
+        BakedModel baseModel = layerAccessor != null ? layerAccessor.pcustomtextures$getModel() : null;
+        if (modelId == null && namedModels != null && !namedModels.isEmpty()) {
+            Identifier namedModelId = selectNamedModelId(baseModel, namedModels);
+            if (namedModelId != null) {
+                modelId = namedModelId;
             }
         }
 
@@ -87,7 +105,7 @@ public class ItemModelManagerMixin {
             BakedModel model = client.getBakedModelManager().getModel(new ModelIdentifier(modelId, "inventory"));
             BakedModel missing = client.getBakedModelManager().getMissingBlockModel();
             if (model == null || model == missing) {
-                BakedModel baked = NbtRenderOverrideResolver.resolveModelBaked(modelId);
+                BakedModel baked = ItemCitResolver.resolveModelBaked(modelId);
                 if (baked != null) {
                     model = baked;
                 }
@@ -96,16 +114,15 @@ public class ItemModelManagerMixin {
                 Pcustomtextures.LOGGER.warn("[pcustomtextures][model] baked model missing for {}", modelId);
                 return;
             }
-            BakedModel baseModel = layerAccessor != null ? layerAccessor.pcustomtextures$getModel() : null;
-            if (textureId != null) {
-                Sprite sprite = NbtRenderOverrideResolver.resolveSprite(textureId);
-                if (sprite != null) {
-                    model = new TextureOverrideBakedModel(model, sprite);
-                } else {
+            Map<String, Sprite> namedSprites = resolveNamedSprites(namedTextures);
+            Sprite defaultSprite = textureId != null ? ItemCitResolver.resolveSprite(textureId) : null;
+            if (defaultSprite != null || !namedSprites.isEmpty()) {
+                if (defaultSprite == null && textureId != null) {
                     Pcustomtextures.LOGGER.warn("[pcustomtextures][model] sprite missing for texture {}", textureId);
                 }
+                model = new NamedTextureOverrideBakedModel(model, namedSprites, defaultSprite);
             } else if (isMissingSprite(model.getParticleSprite())) {
-                Sprite resolved = NbtRenderOverrideResolver.resolveModelTextureSprite(modelId);
+                Sprite resolved = ItemCitResolver.resolveModelTextureSprite(modelId);
                 if (resolved != null) {
                     model = new TextureOverrideBakedModel(model, resolved);
                 }
@@ -151,7 +168,9 @@ public class ItemModelManagerMixin {
 
         if (textureId == null) {
             //Pcustomtextures.LOGGER.info("[pcustomtextures][model] no override model or texture for {}", itemId);
-            return;
+            if (namedTextures == null || namedTextures.isEmpty()) {
+                return;
+            }
         }
 
         if (count <= 0) {
@@ -162,16 +181,19 @@ public class ItemModelManagerMixin {
         layer = accessor.pcustomtextures$getLayers()[0];
         layerAccessor = (ItemRenderLayerStateAccessor) layer;
 
-        Sprite sprite = NbtRenderOverrideResolver.resolveSprite(textureId);
-        if (sprite == null) {
-            Pcustomtextures.LOGGER.warn("[pcustomtextures][model] sprite missing for texture {}", textureId);
-            return;
-        }
-
-        BakedModel baseModel = layerAccessor.pcustomtextures$getModel();
+        baseModel = layerAccessor.pcustomtextures$getModel();
         if (baseModel == null) {
             //Pcustomtextures.LOGGER.warn("[pcustomtextures][model] base model missing for {}", itemId);
             return;
+        }
+
+        Map<String, Sprite> namedSprites = resolveNamedSprites(namedTextures);
+        Sprite defaultSprite = textureId != null ? ItemCitResolver.resolveSprite(textureId) : null;
+        if (defaultSprite == null && textureId != null) {
+            Pcustomtextures.LOGGER.warn("[pcustomtextures][model] sprite missing for texture {}", textureId);
+            if (namedSprites.isEmpty()) {
+                return;
+            }
         }
 
         RenderLayer renderLayer = layerAccessor.pcustomtextures$getRenderLayer();
@@ -182,7 +204,7 @@ public class ItemModelManagerMixin {
             renderLayer = TexturedRenderLayers.getItemEntityTranslucentCull();
         }
         //Pcustomtextures.LOGGER.info("[pcustomtextures][model] applying texture {} to first layer for {}", textureId, itemId);
-        layer.setModel(new TextureOverrideBakedModel(baseModel, sprite), renderLayer);
+        layer.setModel(new NamedTextureOverrideBakedModel(baseModel, namedSprites, defaultSprite), renderLayer);
     }
 
     private static boolean hasAnyQuads(BakedModel model) {
@@ -223,7 +245,7 @@ public class ItemModelManagerMixin {
             return false;
         }
 
-        Identifier spriteId = NbtRenderOverrideResolver.toSpriteId(textureId);
+        Identifier spriteId = ItemCitResolver.toSpriteId(textureId);
         if (spriteId == null) {
             return false;
         }
@@ -279,5 +301,41 @@ public class ItemModelManagerMixin {
             current = current.getSuperclass();
         }
         return NO_FIELD;
+    }
+
+    private static Map<String, Sprite> resolveNamedSprites(Map<String, Identifier> namedTextures) {
+        if (namedTextures == null || namedTextures.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Sprite> sprites = new HashMap<>();
+        for (Map.Entry<String, Identifier> entry : namedTextures.entrySet()) {
+            Sprite sprite = ItemCitResolver.resolveSprite(entry.getValue());
+            if (sprite != null) {
+                sprites.put(entry.getKey(), sprite);
+            }
+        }
+        return sprites.isEmpty() ? Map.of() : sprites;
+    }
+
+    private static Identifier selectNamedModelId(BakedModel baseModel, Map<String, Identifier> namedModels) {
+        if (baseModel == null || namedModels == null || namedModels.isEmpty()) {
+            return null;
+        }
+        Sprite sprite = baseModel.getParticleSprite();
+        if (sprite == null) {
+            return null;
+        }
+        Identifier id;
+        try {
+            id = sprite.getContents().getId();
+        } catch (Exception e) {
+            return null;
+        }
+        for (Map.Entry<String, Identifier> entry : namedModels.entrySet()) {
+            if (ItemCitResolver.matchesTextureName(id, entry.getKey())) {
+                return entry.getValue();
+            }
+        }
+        return null;
     }
 }

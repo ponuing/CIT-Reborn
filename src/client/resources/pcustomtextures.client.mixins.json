@@ -5,12 +5,12 @@
   "compatibilityLevel": "JAVA_21",
   "client": [
     "AtlasLoaderMixin",
-    "ElytraFeatureRendererMixin",
-    "EquipmentRendererMixin",
-    "ItemRenderLayerStateAccessor",
-    "ItemModelManagerMixin",
-    "ItemRenderStateAccessor",
-    "ItemRendererMixin",
+    "elytra.ElytraFeatureRendererMixin",
+    "armor.EquipmentRendererMixin",
+    "item.ItemRenderLayerStateAccessor",
+    "item.ItemModelManagerMixin",
+    "item.ItemRenderStateAccessor",
+    "item.ItemRendererMixin",
     "JsonUnbakedModelDeserializerMixin",
     "SpriteAtlasManagerAtlasPreparationMixin"
   ],

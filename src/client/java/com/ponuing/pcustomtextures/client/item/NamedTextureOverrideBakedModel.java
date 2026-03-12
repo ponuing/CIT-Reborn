@@ -1,26 +1,32 @@
-package com.ponuing.pcustomtextures.client;
+package com.ponuing.pcustomtextures.client.item;
 
+import com.ponuing.pcustomtextures.client.item.ItemCitResolver;
 import net.minecraft.client.render.model.BakedModel;
 import net.minecraft.client.render.model.BakedQuad;
 import net.minecraft.client.render.model.WrapperBakedModel;
 import net.minecraft.client.texture.Sprite;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.random.Random;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
-public final class TextureOverrideBakedModel extends WrapperBakedModel {
-    private final Sprite sprite;
+public final class NamedTextureOverrideBakedModel extends WrapperBakedModel {
+    private final Map<String, Sprite> namedSprites;
+    private final Sprite defaultSprite;
 
-    public TextureOverrideBakedModel(BakedModel wrapped, Sprite sprite) {
+    public NamedTextureOverrideBakedModel(BakedModel wrapped, Map<String, Sprite> namedSprites, Sprite defaultSprite) {
         super(wrapped);
-        this.sprite = sprite;
+        this.namedSprites = namedSprites == null ? Collections.emptyMap() : Map.copyOf(namedSprites);
+        this.defaultSprite = defaultSprite;
     }
 
     @Override
     public List<BakedQuad> getQuads(net.minecraft.block.BlockState state, Direction face, Random random) {
-        if (sprite == null) {
+        if (namedSprites.isEmpty() && defaultSprite == null) {
             return super.getQuads(state, face, random);
         }
 
@@ -32,17 +38,18 @@ public final class TextureOverrideBakedModel extends WrapperBakedModel {
         List<BakedQuad> replaced = new ArrayList<>(original.size());
         for (BakedQuad quad : original) {
             Sprite oldSprite = quad.getSprite();
-            if (oldSprite == null || oldSprite == sprite) {
+            Sprite replacement = selectReplacement(oldSprite);
+            if (replacement == null || replacement == oldSprite) {
                 replaced.add(quad);
                 continue;
             }
 
-            int[] remapped = remapUvs(quad.getVertexData(), oldSprite, sprite);
+            int[] remapped = remapUvs(quad.getVertexData(), oldSprite, replacement);
             replaced.add(new BakedQuad(
                     remapped,
                     quad.getTintIndex(),
                     quad.getFace(),
-                    sprite,
+                    replacement,
                     quad.hasShade(),
                     quad.getLightEmission()
             ));
@@ -52,7 +59,27 @@ public final class TextureOverrideBakedModel extends WrapperBakedModel {
 
     @Override
     public Sprite getParticleSprite() {
-        return sprite != null ? sprite : super.getParticleSprite();
+        Sprite base = super.getParticleSprite();
+        Sprite replacement = selectReplacement(base);
+        return replacement != null ? replacement : base;
+    }
+
+    private Sprite selectReplacement(Sprite oldSprite) {
+        if (oldSprite != null && !namedSprites.isEmpty()) {
+            Identifier id = null;
+            try {
+                id = oldSprite.getContents().getId();
+            } catch (Exception ignored) {
+            }
+            if (id != null) {
+                for (Map.Entry<String, Sprite> entry : namedSprites.entrySet()) {
+                    if (ItemCitResolver.matchesTextureName(id, entry.getKey())) {
+                        return entry.getValue();
+                    }
+                }
+            }
+        }
+        return defaultSprite;
     }
 
     private static int[] remapUvs(int[] vertexData, Sprite from, Sprite to) {

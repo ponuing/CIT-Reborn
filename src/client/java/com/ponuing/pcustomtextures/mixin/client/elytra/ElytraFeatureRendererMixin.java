@@ -1,6 +1,6 @@
-package com.ponuing.pcustomtextures.mixin.client;
+package com.ponuing.pcustomtextures.mixin.client.elytra;
 
-import com.ponuing.pcustomtextures.client.NbtRenderOverrideResolver;
+import com.ponuing.pcustomtextures.client.elytra.ElytraCitResolver;
 import net.minecraft.client.render.entity.feature.ElytraFeatureRenderer;
 import net.minecraft.client.render.entity.state.BipedEntityRenderState;
 import net.minecraft.item.ItemStack;
@@ -22,7 +22,7 @@ public class ElytraFeatureRendererMixin {
         if (stack == null || !stack.isOf(Items.ELYTRA)) {
             return;
         }
-        Identifier override = NbtRenderOverrideResolver.resolveElytraTextureOverride(stack);
+        Identifier override = ElytraCitResolver.resolveElytraTextureOverride(stack);
         if (override != null) {
             cir.setReturnValue(override);
         }

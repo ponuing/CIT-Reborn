@@ -1,6 +1,6 @@
-package com.ponuing.pcustomtextures.mixin.client;
+package com.ponuing.pcustomtextures.mixin.client.item;
 
-import com.ponuing.pcustomtextures.client.NbtRenderOverrideResolver;
+import com.ponuing.pcustomtextures.client.item.ItemCitResolver;
 import net.minecraft.client.render.item.ItemRenderer;
 import net.minecraft.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
@@ -16,7 +16,7 @@ public class ItemRendererMixin {
             index = 1
     )
     private ItemStack pcustomtextures$overrideItemStack(ItemStack original) {
-        return NbtRenderOverrideResolver.resolveItemStackForRender(original);
+        return ItemCitResolver.resolveItemStackForRender(original);
     }
 
     @ModifyVariable(
@@ -26,6 +26,6 @@ public class ItemRendererMixin {
             index = 2
     )
     private ItemStack pcustomtextures$overrideItemStackFromLiving(ItemStack original) {
-        return NbtRenderOverrideResolver.resolveItemStackForRender(original);
+        return ItemCitResolver.resolveItemStackForRender(original);
     }
 }
