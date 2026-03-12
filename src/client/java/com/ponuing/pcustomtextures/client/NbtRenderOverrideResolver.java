@@ -3,8 +3,18 @@ package com.ponuing.pcustomtextures.client;
 import com.ponuing.pcustomtextures.Pcustomtextures;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.texture.MissingSprite;
+import net.minecraft.client.render.model.BakedModel;
+import net.minecraft.client.render.model.ModelBakeSettings;
+import net.minecraft.client.render.model.ModelRotation;
+import net.minecraft.client.render.model.UnbakedModel;
+import net.minecraft.client.render.model.Baker;
+import net.minecraft.client.model.ModelNameSupplier;
+import net.minecraft.client.model.SpriteGetter;
+import net.fabricmc.fabric.api.client.model.loading.v1.UnbakedModelDeserializer;
+import net.minecraft.client.render.model.json.JsonUnbakedModel;
 import net.minecraft.client.texture.Sprite;
 import net.minecraft.client.texture.SpriteAtlasTexture;
+import net.minecraft.client.util.SpriteIdentifier;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.ItemEnchantmentsComponent;
 import net.minecraft.component.type.PotionContentsComponent;
@@ -12,16 +22,19 @@ import net.minecraft.resource.Resource;
 import net.minecraft.resource.ResourceFinder;
 import net.minecraft.resource.ResourceManager;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 import net.minecraft.nbt.AbstractNbtNumber;
 import net.minecraft.nbt.NbtByte;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
+import net.minecraft.nbt.NbtInt;
 import net.minecraft.nbt.NbtList;
 import net.minecraft.nbt.NbtShort;
 import net.minecraft.nbt.NbtString;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.entry.RegistryEntry;
+import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -46,14 +59,87 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Pattern;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.lang.reflect.Method;
 
 public final class NbtRenderOverrideResolver {
     private static final Identifier ITEM_ATLAS_ID = Identifier.ofVanilla("textures/atlas/items.png");
+    private static final List<String> CIT_ROOTS = List.of("optifine", "mcpatcher", "citresewn");
     private static final CopyOnWriteArrayList<CitRule> RULES = new CopyOnWriteArrayList<>();
     private static volatile Map<Identifier, GeneratedModelDef> GENERATED_ITEM_MODELS = Map.of();
     private static volatile Map<Identifier, Identifier> ITEM_BASE_MODELS = Map.of();
     private static volatile Set<Identifier> EXTRA_ITEM_MODELS = Set.of();
     private static volatile Map<Identifier, List<CitRule>> ITEM_RULES = Map.of();
+    private static final Map<Integer, Identifier> LEGACY_ENCHANTMENT_IDS = Map.ofEntries(
+            java.util.Map.entry(0, Identifier.of("minecraft", "protection")),
+            java.util.Map.entry(1, Identifier.of("minecraft", "fire_protection")),
+            java.util.Map.entry(2, Identifier.of("minecraft", "feather_falling")),
+            java.util.Map.entry(3, Identifier.of("minecraft", "blast_protection")),
+            java.util.Map.entry(4, Identifier.of("minecraft", "projectile_protection")),
+            java.util.Map.entry(5, Identifier.of("minecraft", "respiration")),
+            java.util.Map.entry(6, Identifier.of("minecraft", "aqua_affinity")),
+            java.util.Map.entry(7, Identifier.of("minecraft", "thorns")),
+            java.util.Map.entry(8, Identifier.of("minecraft", "depth_strider")),
+            java.util.Map.entry(9, Identifier.of("minecraft", "frost_walker")),
+            java.util.Map.entry(10, Identifier.of("minecraft", "binding_curse")),
+            java.util.Map.entry(16, Identifier.of("minecraft", "sharpness")),
+            java.util.Map.entry(17, Identifier.of("minecraft", "smite")),
+            java.util.Map.entry(18, Identifier.of("minecraft", "bane_of_arthropods")),
+            java.util.Map.entry(19, Identifier.of("minecraft", "knockback")),
+            java.util.Map.entry(20, Identifier.of("minecraft", "fire_aspect")),
+            java.util.Map.entry(21, Identifier.of("minecraft", "looting")),
+            java.util.Map.entry(22, Identifier.of("minecraft", "sweeping_edge")),
+            java.util.Map.entry(32, Identifier.of("minecraft", "efficiency")),
+            java.util.Map.entry(33, Identifier.of("minecraft", "silk_touch")),
+            java.util.Map.entry(34, Identifier.of("minecraft", "unbreaking")),
+            java.util.Map.entry(35, Identifier.of("minecraft", "fortune")),
+            java.util.Map.entry(48, Identifier.of("minecraft", "power")),
+            java.util.Map.entry(49, Identifier.of("minecraft", "punch")),
+            java.util.Map.entry(50, Identifier.of("minecraft", "flame")),
+            java.util.Map.entry(51, Identifier.of("minecraft", "infinity")),
+            java.util.Map.entry(61, Identifier.of("minecraft", "luck_of_the_sea")),
+            java.util.Map.entry(62, Identifier.of("minecraft", "lure")),
+            java.util.Map.entry(65, Identifier.of("minecraft", "riptide")),
+            java.util.Map.entry(66, Identifier.of("minecraft", "loyalty")),
+            java.util.Map.entry(67, Identifier.of("minecraft", "channeling")),
+            java.util.Map.entry(68, Identifier.of("minecraft", "impaling")),
+            java.util.Map.entry(70, Identifier.of("minecraft", "mending")),
+            java.util.Map.entry(71, Identifier.of("minecraft", "vanishing_curse"))
+    );
+    private static final Map<Identifier, Integer> LEGACY_STATUS_EFFECT_IDS = Map.ofEntries(
+            java.util.Map.entry(Identifier.of("minecraft", "speed"), 1),
+            java.util.Map.entry(Identifier.of("minecraft", "slowness"), 2),
+            java.util.Map.entry(Identifier.of("minecraft", "haste"), 3),
+            java.util.Map.entry(Identifier.of("minecraft", "mining_fatigue"), 4),
+            java.util.Map.entry(Identifier.of("minecraft", "strength"), 5),
+            java.util.Map.entry(Identifier.of("minecraft", "instant_health"), 6),
+            java.util.Map.entry(Identifier.of("minecraft", "instant_damage"), 7),
+            java.util.Map.entry(Identifier.of("minecraft", "jump_boost"), 8),
+            java.util.Map.entry(Identifier.of("minecraft", "nausea"), 9),
+            java.util.Map.entry(Identifier.of("minecraft", "regeneration"), 10),
+            java.util.Map.entry(Identifier.of("minecraft", "resistance"), 11),
+            java.util.Map.entry(Identifier.of("minecraft", "fire_resistance"), 12),
+            java.util.Map.entry(Identifier.of("minecraft", "water_breathing"), 13),
+            java.util.Map.entry(Identifier.of("minecraft", "invisibility"), 14),
+            java.util.Map.entry(Identifier.of("minecraft", "blindness"), 15),
+            java.util.Map.entry(Identifier.of("minecraft", "night_vision"), 16),
+            java.util.Map.entry(Identifier.of("minecraft", "hunger"), 17),
+            java.util.Map.entry(Identifier.of("minecraft", "weakness"), 18),
+            java.util.Map.entry(Identifier.of("minecraft", "poison"), 19),
+            java.util.Map.entry(Identifier.of("minecraft", "wither"), 20),
+            java.util.Map.entry(Identifier.of("minecraft", "health_boost"), 21),
+            java.util.Map.entry(Identifier.of("minecraft", "absorption"), 22),
+            java.util.Map.entry(Identifier.of("minecraft", "saturation"), 23),
+            java.util.Map.entry(Identifier.of("minecraft", "glowing"), 24),
+            java.util.Map.entry(Identifier.of("minecraft", "levitation"), 25),
+            java.util.Map.entry(Identifier.of("minecraft", "luck"), 26),
+            java.util.Map.entry(Identifier.of("minecraft", "unluck"), 27),
+            java.util.Map.entry(Identifier.of("minecraft", "slow_falling"), 28),
+            java.util.Map.entry(Identifier.of("minecraft", "conduit_power"), 29),
+            java.util.Map.entry(Identifier.of("minecraft", "dolphins_grace"), 30),
+            java.util.Map.entry(Identifier.of("minecraft", "bad_omen"), 31),
+            java.util.Map.entry(Identifier.of("minecraft", "hero_of_the_village"), 32),
+            java.util.Map.entry(Identifier.of("minecraft", "darkness"), 33)
+    );
     private static final int RULE_CACHE_LIMIT = 2048;
     private static final Map<RuleCacheKey, CitRule> RULE_CACHE = java.util.Collections.synchronizedMap(
             new java.util.LinkedHashMap<>(256, 0.75f, true) {
@@ -72,8 +158,40 @@ public final class NbtRenderOverrideResolver {
                 }
             }
     );
+    private static final int MODEL_BAKED_CACHE_LIMIT = 256;
+    private static final Map<Identifier, BakedModel> MODEL_BAKED_CACHE = java.util.Collections.synchronizedMap(
+            new java.util.LinkedHashMap<>(128, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<Identifier, BakedModel> eldest) {
+                    return size() > MODEL_BAKED_CACHE_LIMIT;
+                }
+            }
+    );
     private static final java.util.concurrent.atomic.AtomicBoolean INITIAL_LOAD_DONE = new java.util.concurrent.atomic.AtomicBoolean(false);
-    private static final java.util.concurrent.atomic.AtomicInteger SHULKER_DEBUG_COUNT = new java.util.concurrent.atomic.AtomicInteger(0);
+
+    private enum RuleType {
+        ITEM,
+        ARMOR,
+        ELYTRA
+    }
+
+    public enum HandMatch {
+        ANY,
+        MAIN,
+        OFF;
+
+        static HandMatch parse(String raw) {
+            if (raw == null || raw.isBlank()) {
+                return ANY;
+            }
+            String value = raw.trim().toLowerCase(Locale.ROOT);
+            return switch (value) {
+                case "main", "mainhand", "main_hand" -> MAIN;
+                case "off", "offhand", "off_hand" -> OFF;
+                default -> ANY;
+            };
+        }
+    }
 
     private NbtRenderOverrideResolver() {
     }
@@ -83,13 +201,17 @@ public final class NbtRenderOverrideResolver {
     }
 
     public static Identifier resolveItemTextureOverride(ItemStack stack) {
+        return resolveItemTextureOverride(stack, HandMatch.ANY);
+    }
+
+    public static Identifier resolveItemTextureOverride(ItemStack stack, HandMatch hand) {
         if (stack == null || stack.isEmpty()) {
             return null;
         }
         ensureLoaded();
         Identifier itemId = Registries.ITEM.getId(stack.getItem());
         //Pcustomtextures.LOGGER.info("[pcustomtextures][item] resolve texture for {} x{}", itemId, stack.getCount());
-        CitRule rule = findMatchingRule(stack, false);
+        CitRule rule = findMatchingRule(stack, RuleType.ITEM, hand);
         if (rule == null) {
             //Pcustomtextures.LOGGER.info("[pcustomtextures][item] no matching rule or no texture candidates for {}", itemId);
             return null;
@@ -117,12 +239,16 @@ public final class NbtRenderOverrideResolver {
     }
 
     public static Identifier resolveItemModelOverride(ItemStack stack) {
+        return resolveItemModelOverride(stack, HandMatch.ANY);
+    }
+
+    public static Identifier resolveItemModelOverride(ItemStack stack, HandMatch hand) {
         if (stack == null || stack.isEmpty()) {
             return null;
         }
 
         ensureLoaded();
-        CitRule rule = findMatchingRule(stack, false);
+        CitRule rule = findMatchingRule(stack, RuleType.ITEM, hand);
         if (rule == null) {
             return null;
         }
@@ -132,6 +258,18 @@ public final class NbtRenderOverrideResolver {
         }
 
         return null;
+    }
+
+    public static Identifier resolveElytraTextureOverride(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return null;
+        }
+        ensureLoaded();
+        CitRule rule = findMatchingRule(stack, RuleType.ELYTRA, HandMatch.ANY);
+        if (rule == null || rule.elytraTextureCandidates().isEmpty()) {
+            return null;
+        }
+        return findExistingTexture(rule.elytraTextureCandidates());
     }
 
     public static Identifier toSpriteId(Identifier textureId) {
@@ -181,25 +319,46 @@ public final class NbtRenderOverrideResolver {
         if (modelId == null) {
             return null;
         }
-        boolean debug = isShulkerModel(modelId);
         Sprite cached = MODEL_SPRITE_CACHE.get(modelId);
         if (cached != null) {
-            /*if (debug) {
-                Pcustomtextures.LOGGER.info("[pcustomtextures][debug] model sprite cache hit model={} sprite={}", modelId, describeSprite(cached));
-            }*/
             return cached;
         }
-        Sprite resolved = resolveModelTextureSpriteInternal(modelId, debug);
+        Sprite resolved = resolveModelTextureSpriteInternal(modelId);
         if (resolved != null) {
             MODEL_SPRITE_CACHE.put(modelId, resolved);
         }
-        /*if (debug) {
-            Pcustomtextures.LOGGER.info("[pcustomtextures][debug] model sprite resolved model={} sprite={}", modelId, describeSprite(resolved));
-        }*/
         return resolved;
     }
 
-    private static Sprite resolveModelTextureSpriteInternal(Identifier modelId, boolean debug) {
+    public static BakedModel resolveModelBaked(Identifier modelId) {
+        if (modelId == null) {
+            return null;
+        }
+        BakedModel cached = MODEL_BAKED_CACHE.get(modelId);
+        if (cached != null) {
+            return cached;
+        }
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.getResourceManager() == null) {
+            return null;
+        }
+        ResourceManager manager = client.getResourceManager();
+        SimpleModelBaker baker = new SimpleModelBaker(client, manager);
+        UnbakedModel unbaked = loadUnbakedModel(manager, modelId);
+        if (unbaked == null) {
+            return null;
+        }
+        BakedModel baked = UnbakedModel.bake(unbaked, baker, ModelRotation.X0_Y0);
+        if (baked != null) {
+            MODEL_BAKED_CACHE.put(modelId, baked);
+        }
+        return baked;
+    }
+
+    public static Identifier resolveModelTextureId(Identifier modelId) {
+        if (modelId == null) {
+            return null;
+        }
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null || client.getResourceManager() == null) {
             return null;
@@ -208,15 +367,12 @@ public final class NbtRenderOverrideResolver {
         Identifier modelResource = Identifier.of(modelId.getNamespace(), "models/" + modelPath + ".json");
         Resource resource = client.getResourceManager().getResource(modelResource).orElse(null);
         boolean optifineModel = false;
-        if (resource == null && (modelPath.startsWith("optifine/") || modelPath.startsWith("cit/"))) {
+        if (resource == null && isCitRootPath(modelPath)) {
             optifineModel = true;
             modelResource = Identifier.of(modelId.getNamespace(), modelPath + ".json");
             resource = client.getResourceManager().getResource(modelResource).orElse(null);
         }
         if (resource == null) {
-            /*if (debug) {
-                Pcustomtextures.LOGGER.warn("[pcustomtextures][debug] model json missing {}", modelResource);
-            }*/
             return null;
         }
         try (InputStream in = resource.getInputStream()) {
@@ -226,17 +382,11 @@ public final class NbtRenderOverrideResolver {
             }
             JsonElement element = JsonParser.parseString(jsonText);
             if (!element.isJsonObject()) {
-                /*if (debug) {
-                    Pcustomtextures.LOGGER.warn("[pcustomtextures][debug] model json not object {}", modelResource);
-                }*/
                 return null;
             }
             JsonObject obj = element.getAsJsonObject();
             JsonElement texturesElement = obj.get("textures");
             if (texturesElement == null || !texturesElement.isJsonObject()) {
-                /*if (debug) {
-                    Pcustomtextures.LOGGER.warn("[pcustomtextures][debug] model json has no textures {}", modelResource);
-                }*/
                 return null;
             }
             Map<String, String> textures = new HashMap<>();
@@ -247,45 +397,112 @@ public final class NbtRenderOverrideResolver {
                 }
             }
             if (textures.isEmpty()) {
-                /*if (debug) {
-                    Pcustomtextures.LOGGER.warn("[pcustomtextures][debug] model json textures empty {}", modelResource);
-                }*/
                 return null;
             }
             String textureValue = resolveTextureReference(textures);
             if (textureValue == null) {
-                /*if (debug) {
-                    Pcustomtextures.LOGGER.warn("[pcustomtextures][debug] model json texture ref not resolved {}", modelResource);
-                }*/
                 return null;
             }
             Identifier textureId = resolveTextureIdentifier(modelId, textureValue);
-            /*if (debug) {
-                Pcustomtextures.LOGGER.info("[pcustomtextures][debug] model texture ref model={} value={} -> {}", modelId, textureValue, textureId);
-            }*/
+            if (textureId == null) {
+                return null;
+            }
+            if (client.getResourceManager().getResource(textureId).isPresent()) {
+                return textureId;
+            }
+            Identifier alias = resolveOptifineAlias(textureId);
+            if (alias != null && client.getResourceManager().getResource(alias).isPresent()) {
+                return alias;
+            }
+            return textureId;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static UnbakedModel loadUnbakedModel(ResourceManager manager, Identifier modelId) {
+        if (manager == null || modelId == null) {
+            return null;
+        }
+        String modelPath = modelId.getPath();
+        String rawPath = modelPath.startsWith("models/") ? modelPath.substring("models/".length()) : modelPath;
+        boolean optifineModel = isCitRootPath(rawPath);
+        Identifier modelResource = optifineModel
+                ? Identifier.of(modelId.getNamespace(), rawPath + ".json")
+                : Identifier.of(modelId.getNamespace(), "models/" + rawPath + ".json");
+        Resource resource = manager.getResource(modelResource).orElse(null);
+        if (resource == null) {
+            return null;
+        }
+        try (InputStream in = resource.getInputStream()) {
+            String jsonText = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            if (optifineModel) {
+                jsonText = normalizeOptifineModelJson(rawPath, jsonText);
+                return JsonUnbakedModel.deserialize(new java.io.StringReader(jsonText));
+            }
+            return UnbakedModelDeserializer.deserialize(new java.io.StringReader(jsonText));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static Sprite resolveModelTextureSpriteInternal(Identifier modelId) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.getResourceManager() == null) {
+            return null;
+        }
+        String modelPath = modelId.getPath();
+        Identifier modelResource = Identifier.of(modelId.getNamespace(), "models/" + modelPath + ".json");
+        Resource resource = client.getResourceManager().getResource(modelResource).orElse(null);
+        boolean optifineModel = false;
+        if (resource == null && isCitRootPath(modelPath)) {
+            optifineModel = true;
+            modelResource = Identifier.of(modelId.getNamespace(), modelPath + ".json");
+            resource = client.getResourceManager().getResource(modelResource).orElse(null);
+        }
+        if (resource == null) {
+            return null;
+        }
+        try (InputStream in = resource.getInputStream()) {
+            String jsonText = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            if (optifineModel) {
+                jsonText = normalizeOptifineModelJson(modelPath, jsonText);
+            }
+            JsonElement element = JsonParser.parseString(jsonText);
+            if (!element.isJsonObject()) {
+                return null;
+            }
+            JsonObject obj = element.getAsJsonObject();
+            JsonElement texturesElement = obj.get("textures");
+            if (texturesElement == null || !texturesElement.isJsonObject()) {
+                return null;
+            }
+            Map<String, String> textures = new HashMap<>();
+            for (Map.Entry<String, JsonElement> entry : texturesElement.getAsJsonObject().entrySet()) {
+                JsonElement value = entry.getValue();
+                if (value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()) {
+                    textures.put(entry.getKey(), value.getAsString());
+                }
+            }
+            if (textures.isEmpty()) {
+                return null;
+            }
+            String textureValue = resolveTextureReference(textures);
+            if (textureValue == null) {
+                return null;
+            }
+            Identifier textureId = resolveTextureIdentifier(modelId, textureValue);
             Sprite sprite = resolveSprite(textureId);
             if (!isMissingSprite(sprite)) {
-                /*if (debug) {
-                    Pcustomtextures.LOGGER.info("[pcustomtextures][debug] model sprite found primary {}", describeSprite(sprite));
-                }*/
                 return sprite;
             }
             Identifier alias = resolveOptifineAlias(textureId);
             Sprite aliasSprite = resolveSprite(alias);
             if (!isMissingSprite(aliasSprite)) {
-                /*if (debug) {
-                    Pcustomtextures.LOGGER.info("[pcustomtextures][debug] model sprite found alias {} -> {}", alias, describeSprite(aliasSprite));
-                }*/
                 return aliasSprite;
             }
-            /*if (debug) {
-                Pcustomtextures.LOGGER.warn("[pcustomtextures][debug] model sprite missing primary={} alias={} sprite={} aliasSprite={}", textureId, alias, describeSprite(sprite), describeSprite(aliasSprite));
-            }*/
             return sprite;
         } catch (Exception e) {
-            /*if (debug) {
-                Pcustomtextures.LOGGER.warn("[pcustomtextures][debug] model sprite resolve error {}", modelResource, e);
-            }*/
             return null;
         }
     }
@@ -333,7 +550,13 @@ public final class NbtRenderOverrideResolver {
         } else if (!path.startsWith("item/") && !path.startsWith("block/") && !path.startsWith("textures/") && !path.contains("/")) {
             path = modelDir + "/" + path;
         }
-        if (!path.startsWith("textures/")) {
+        if (path.startsWith("textures/")) {
+            String trimmed = path.substring("textures/".length());
+            if (isCitRootPath(trimmed)) {
+                path = trimmed;
+            }
+        }
+        if (!path.startsWith("textures/") && !isCitRootPath(path)) {
             path = "textures/" + path;
         }
         if (!path.endsWith(".png")) {
@@ -342,35 +565,35 @@ public final class NbtRenderOverrideResolver {
         return Identifier.of(namespace, path);
     }
 
+    private static boolean isCitRootPath(String path) {
+        if (path == null) {
+            return false;
+        }
+        if (path.startsWith("cit/")) {
+            return true;
+        }
+        for (String root : CIT_ROOTS) {
+            if (path.startsWith(root + "/cit/")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static Identifier resolveOptifineAlias(Identifier textureId) {
         if (textureId == null) {
             return null;
         }
         String path = textureId.getPath();
-        if (!path.startsWith("textures/optifine/cit/")) {
+        String rest;
+        if (path.startsWith("textures/optifine/cit/")) {
+            rest = path.substring("textures/optifine/cit/".length());
+        } else if (path.startsWith("optifine/cit/")) {
+            rest = path.substring("optifine/cit/".length());
+        } else {
             return null;
         }
-        String rest = path.substring("textures/optifine/cit/".length());
         return Identifier.of(textureId.getNamespace(), "textures/item/optifine_cit/" + rest);
-    }
-
-    private static boolean isShulkerModel(Identifier modelId) {
-        if (modelId == null) {
-            return false;
-        }
-        String path = modelId.getPath();
-        return path.contains("shulker") || path.contains("cit_totem") || path.contains("cit");
-    }
-
-    private static String describeSprite(Sprite sprite) {
-        if (sprite == null) {
-            return "null";
-        }
-        try {
-            return sprite.getContents().getId().toString();
-        } catch (Exception e) {
-            return sprite.toString();
-        }
     }
 
     private static boolean isMissingSprite(Sprite sprite) {
@@ -384,6 +607,86 @@ public final class NbtRenderOverrideResolver {
         }
     }
 
+
+    private static final class SimpleModelBaker implements Baker {
+        private final ResourceManager manager;
+        private final SpriteGetter spriteGetter;
+        private final ModelNameSupplier nameSupplier;
+        private final Map<Identifier, UnbakedModel> unbakedCache = new HashMap<>();
+        private final Map<Identifier, BakedModel> bakedCache = new HashMap<>();
+        private final Set<Identifier> inProgress = new HashSet<>();
+        private final BakedModel missingModel;
+
+        private SimpleModelBaker(MinecraftClient client, ResourceManager manager) {
+            this.manager = manager;
+            this.missingModel = client.getBakedModelManager().getMissingBlockModel();
+            this.spriteGetter = new SpriteGetter() {
+                @Override
+                public Sprite get(SpriteIdentifier id) {
+                    try {
+                        return client.getSpriteAtlas(id.getAtlasId()).apply(id.getTextureId());
+                    } catch (Exception e) {
+                        return getMissing("sprite");
+                    }
+                }
+
+                @Override
+                public Sprite getMissing(String name) {
+                    try {
+                        return client.getSpriteAtlas(SpriteAtlasTexture.BLOCK_ATLAS_TEXTURE).apply(MissingSprite.getMissingSpriteId());
+                    } catch (Exception e) {
+                        return null;
+                    }
+                }
+            };
+            this.nameSupplier = () -> "pcustomtextures";
+        }
+
+        @Override
+        public BakedModel bake(Identifier id, ModelBakeSettings settings) {
+            if (id == null) {
+                return missingModel;
+            }
+            BakedModel baked = bakedCache.get(id);
+            if (baked != null) {
+                return baked;
+            }
+            if (!inProgress.add(id)) {
+                return missingModel;
+            }
+            try {
+                UnbakedModel unbaked = unbakedCache.get(id);
+                if (unbaked == null) {
+                    unbaked = loadUnbakedModel(manager, id);
+                    if (unbaked != null) {
+                        unbakedCache.put(id, unbaked);
+                    }
+                }
+                if (unbaked == null) {
+                    return missingModel;
+                }
+                BakedModel bakedModel = UnbakedModel.bake(unbaked, this, settings != null ? settings : ModelRotation.X0_Y0);
+                if (bakedModel != null) {
+                    bakedCache.put(id, bakedModel);
+                    return bakedModel;
+                }
+                return missingModel;
+            } finally {
+                inProgress.remove(id);
+            }
+        }
+
+        @Override
+        public SpriteGetter getSpriteGetter() {
+            return spriteGetter;
+        }
+
+        @Override
+        public ModelNameSupplier getModelNameSupplier() {
+            return nameSupplier;
+        }
+    }
+
     public static Map<Identifier, GeneratedModelDef> getGeneratedItemModels() {
         return GENERATED_ITEM_MODELS;
     }
@@ -394,7 +697,7 @@ public final class NbtRenderOverrideResolver {
 
     public static Identifier resolveArmorTextureOverride(ItemStack stack, Identifier originalTextureId) {
         ensureLoaded();
-        CitRule rule = findMatchingRule(stack, true);
+        CitRule rule = findMatchingRule(stack, RuleType.ARMOR, HandMatch.ANY);
         if (rule == null || rule.armorTextures().isEmpty() || originalTextureId == null) {
             return null;
         }
@@ -479,7 +782,7 @@ public final class NbtRenderOverrideResolver {
         try {
             //Pcustomtextures.LOGGER.info("[pcustomtextures][model] reload start");
             ITEM_BASE_MODELS = loadItemAssetModelsFromManager(manager);
-            List<CitRule> parsedRules = scanOptifineCitRules(manager);
+            List<CitRule> parsedRules = scanCitRules(manager);
 
             RULES.clear();
             RULES.addAll(parsedRules);
@@ -488,6 +791,7 @@ public final class NbtRenderOverrideResolver {
             GENERATED_ITEM_MODELS = buildGeneratedItemModelMap(parsedRules, ITEM_BASE_MODELS);
             EXTRA_ITEM_MODELS = collectExplicitItemModels(parsedRules);
             MODEL_SPRITE_CACHE.clear();
+            MODEL_BAKED_CACHE.clear();
 
             Pcustomtextures.LOGGER.info("[pcustomtextures][model] loaded rules={}, genModels={}, explicitModels={}", parsedRules.size(), GENERATED_ITEM_MODELS.size(), EXTRA_ITEM_MODELS.size());
         } catch (Exception e) {
@@ -497,41 +801,202 @@ public final class NbtRenderOverrideResolver {
         }
     }
 
-    private static List<CitRule> scanOptifineCitRules(ResourceManager manager) {
+    private static List<CitRule> scanCitRules(ResourceManager manager) {
         List<CitRule> rules = new ArrayList<>();
         if (manager == null) {
             return rules;
         }
 
-        ResourceFinder finder = new ResourceFinder("optifine/cit", ".properties");
         TextureReader reader = (id) -> readFromManager(manager, id);
-        for (Map.Entry<Identifier, Resource> entry : finder.findResources(manager).entrySet()) {
-            Identifier id = entry.getKey();
-            byte[] bytes = readResourceBytes(entry.getValue());
-            if (bytes == null) {
-                continue;
+        for (String root : CIT_ROOTS) {
+            ResourceFinder finder = new ResourceFinder(root + "/cit", ".properties");
+            for (Map.Entry<Identifier, Resource> entry : finder.findResources(manager).entrySet()) {
+                Identifier id = entry.getKey();
+                byte[] bytes = readResourceBytes(entry.getValue());
+                if (bytes == null) {
+                    continue;
+                }
+                parseProperties(id.getNamespace(), id.getPath(), bytes, rules, reader);
             }
-            parseProperties(id.getNamespace(), id.getPath(), bytes, rules, reader);
         }
+        scanPotionTextures(manager, rules, reader);
 
         rules.sort(Comparator.comparingInt(CitRule::weight).reversed());
         return rules;
     }
 
+    private static void scanPotionTextures(ResourceManager manager, List<CitRule> rules, TextureReader reader) {
+        if (manager == null) {
+            return;
+        }
+        if (rules == null) {
+            return;
+        }
+
+        addPotionRulesForFolder(manager, rules, reader, "normal", Items.POTION);
+        addPotionRulesForFolder(manager, rules, reader, "splash", Items.SPLASH_POTION);
+        addPotionRulesForFolder(manager, rules, reader, "linger", Items.LINGERING_POTION);
+    }
+
+    private static void addPotionRulesForFolder(ResourceManager manager, List<CitRule> rules, TextureReader reader, String folder, net.minecraft.item.Item item) {
+        for (String root : CIT_ROOTS) {
+            ResourceFinder finder = new ResourceFinder(root + "/cit/potion/" + folder, ".png");
+            for (Map.Entry<Identifier, Resource> entry : finder.findResources(manager).entrySet()) {
+                Identifier id = entry.getKey();
+                String path = id.getPath();
+                int slash = path.lastIndexOf('/');
+                String name = slash >= 0 ? path.substring(slash + 1) : path;
+                if (!name.endsWith(".png")) {
+                    continue;
+                }
+                name = name.substring(0, name.length() - 4);
+                if (name.isBlank()) {
+                    continue;
+                }
+
+                List<Identifier> textureCandidates = List.of(Identifier.of(id.getNamespace(), path));
+                SourceTexture sourceTexture = findFirstTextureBytes(textureCandidates, reader);
+                int weight = -1;
+                String ruleKey = "potion:" + id.getNamespace() + ":" + path;
+
+                if ("empty".equals(name) && "normal".equals(folder)) {
+                    Set<Identifier> items = Set.of(Registries.ITEM.getId(Items.GLASS_BOTTLE));
+                    rules.add(new CitRule(
+                            RuleType.ITEM,
+                            items,
+                            List.of(),
+                            null,
+                            null,
+                            null,
+                            null,
+                            Set.of(),
+                            null,
+                            null,
+                            null,
+                            weight,
+                            HandMatch.ANY,
+                            null,
+                            sourceTexture,
+                            ruleKey,
+                            textureCandidates,
+                            Map.of(),
+                            List.of()
+                    ));
+                    continue;
+                }
+
+                if ("other".equals(name)) {
+                    for (String potionName : NO_EFFECT_POTION_NAMES) {
+                        Identifier potionId = Identifier.of("minecraft", potionName);
+                        Set<Identifier> items = Set.of(Registries.ITEM.getId(item));
+                        rules.add(new CitRule(
+                                RuleType.ITEM,
+                                items,
+                                List.of(),
+                                null,
+                                null,
+                                null,
+                                null,
+                                Set.of(),
+                                null,
+                                null,
+                                potionId,
+                                weight,
+                                HandMatch.ANY,
+                                null,
+                                sourceTexture,
+                                ruleKey + ":" + potionName,
+                                textureCandidates,
+                                Map.of(),
+                                List.of()
+                        ));
+                    }
+                    continue;
+                }
+
+                Identifier potionId = Identifier.of("minecraft", name);
+                Set<Identifier> items = Set.of(Registries.ITEM.getId(item));
+                rules.add(new CitRule(
+                        RuleType.ITEM,
+                        items,
+                        List.of(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        Set.of(),
+                        null,
+                        null,
+                        potionId,
+                        weight,
+                        HandMatch.ANY,
+                        null,
+                        sourceTexture,
+                        ruleKey,
+                        textureCandidates,
+                        Map.of(),
+                        List.of()
+                ));
+            }
+        }
+    }
+
+    private static final List<String> NO_EFFECT_POTION_NAMES = List.of(
+            "artless",
+            "awkward",
+            "bland",
+            "bulky",
+            "bungling",
+            "buttered",
+            "charming",
+            "clear",
+            "cordial",
+            "dashing",
+            "debonair",
+            "elegant",
+            "fancy",
+            "flat",
+            "foul",
+            "gross",
+            "harsh",
+            "milky",
+            "mundane",
+            "odorless",
+            "potent",
+            "rank",
+            "sparkling",
+            "stinky",
+            "suave",
+            "thick",
+            "thin",
+            "uninteresting"
+    );
+
     private static void parseProperties(String defaultNamespace, String propertiesPath, byte[] propertiesBytes, List<CitRule> out, TextureReader reader) {
         Properties properties = new Properties();
-        try (InputStream in = new ByteArrayInputStream(propertiesBytes)) {
-            properties.load(in);
+        try (InputStream in = new ByteArrayInputStream(propertiesBytes);
+             InputStreamReader propReader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
+            properties.load(propReader);
         } catch (IOException e) {
             return;
         }
 
-        String type = properties.getProperty("type", "item").trim().toLowerCase(Locale.ROOT);
-        if (!type.equals("item") && !type.equals("armor")) {
+        String typeValue = getProperty(properties, "type");
+        String type = (typeValue == null || typeValue.isBlank() ? "item" : typeValue).trim().toLowerCase(Locale.ROOT);
+        RuleType ruleType;
+        if (type.equals("item")) {
+            ruleType = RuleType.ITEM;
+        } else if (type.equals("armor")) {
+            ruleType = RuleType.ARMOR;
+        } else if (type.equals("elytra")) {
+            ruleType = RuleType.ELYTRA;
+        } else {
             return;
         }
 
-        Set<Identifier> items = parseItems(properties.getProperty("items", properties.getProperty("matchItems", "")));
+        String itemsRaw = getProperty(properties, "items");
+        String matchItemsRaw = getProperty(properties, "matchItems");
+        Set<Identifier> items = parseItems(itemsRaw != null ? itemsRaw : (matchItemsRaw == null ? "" : matchItemsRaw));
         if (items.isEmpty()) {
             return;
         }
@@ -539,19 +1004,20 @@ public final class NbtRenderOverrideResolver {
         Identifier itemModelId = null;
         List<Identifier> itemTextureCandidates = new ArrayList<>();
         Map<String, List<Identifier>> armorTextures = new HashMap<>();
+        List<Identifier> elytraTextureCandidates = new ArrayList<>();
         SourceTexture sourceTexture = null;
         String normalizedPath = propertiesPath == null ? "unknown" : propertiesPath.replace('\\', '/');
         String ruleKey = sha1Hex((defaultNamespace == null ? "" : defaultNamespace + ":") + normalizedPath);
 
-        if (type.equals("item")) {
-            String modelRaw = properties.getProperty("model");
+        if (ruleType == RuleType.ITEM) {
+            String modelRaw = getProperty(properties, "model");
             if (modelRaw != null && !modelRaw.isBlank()) {
                 itemModelId = parseItemModelIdentifier(defaultNamespace, propertiesPath, modelRaw);
             }
 
-            String tileRaw = properties.getProperty("tile");
-            String tilesRaw = properties.getProperty("tiles");
-            String textureRaw = properties.getProperty("texture");
+            String tileRaw = getProperty(properties, "tile");
+            String tilesRaw = getProperty(properties, "tiles");
+            String textureRaw = getProperty(properties, "texture");
             if (tileRaw != null && !tileRaw.isBlank()) {
                 itemTextureCandidates.addAll(parseTileIdentifiers(defaultNamespace, propertiesPath, tileRaw));
             } else if (tilesRaw != null && !tilesRaw.isBlank()) {
@@ -574,13 +1040,14 @@ public final class NbtRenderOverrideResolver {
             }
         }
 
-        if (type.equals("armor")) {
+        if (ruleType == RuleType.ARMOR) {
             for (String key : properties.stringPropertyNames()) {
-                if (!key.startsWith("texture.")) {
+                String normalized = stripNamespacePrefix(key);
+                if (!normalized.startsWith("texture.")) {
                     continue;
                 }
 
-                String textureKey = key.substring("texture.".length()).toLowerCase(Locale.ROOT);
+                String textureKey = normalized.substring("texture.".length()).toLowerCase(Locale.ROOT);
                 String rawPath = properties.getProperty(key);
                 List<Identifier> textureIds = parseTextureIdentifiers(defaultNamespace, propertiesPath, rawPath);
                 if (!textureIds.isEmpty()) {
@@ -589,24 +1056,61 @@ public final class NbtRenderOverrideResolver {
             }
         }
 
-        if (itemModelId == null && itemTextureCandidates.isEmpty() && armorTextures.isEmpty()) {
+        if (ruleType == RuleType.ELYTRA) {
+            String tilesRaw = getProperty(properties, "tiles");
+            String textureRaw = getProperty(properties, "texture");
+            String tileRaw = getProperty(properties, "tile");
+            String textureElytraRaw = getProperty(properties, "texture.elytra");
+            if ((textureRaw == null || textureRaw.isBlank()) && textureElytraRaw != null && !textureElytraRaw.isBlank()) {
+                textureRaw = textureElytraRaw;
+            }
+
+            String singleRaw = null;
+            if (tilesRaw != null && !tilesRaw.isBlank()) {
+                elytraTextureCandidates.addAll(parseTilesList(defaultNamespace, propertiesPath, tilesRaw));
+            } else if (textureRaw != null && !textureRaw.isBlank()) {
+                elytraTextureCandidates.addAll(parseTileIdentifiers(defaultNamespace, propertiesPath, textureRaw));
+                singleRaw = textureRaw;
+            } else if (tileRaw != null && !tileRaw.isBlank()) {
+                elytraTextureCandidates.addAll(parseTileIdentifiers(defaultNamespace, propertiesPath, tileRaw));
+                singleRaw = tileRaw;
+            }
+
+            if (singleRaw != null) {
+                addElytraEntityCandidate(elytraTextureCandidates, defaultNamespace, singleRaw);
+            }
+
+            if (elytraTextureCandidates.isEmpty()) {
+                elytraTextureCandidates.addAll(parseImpliedTexture(defaultNamespace, propertiesPath));
+            }
+        }
+
+        if (itemModelId == null && itemTextureCandidates.isEmpty() && armorTextures.isEmpty() && elytraTextureCandidates.isEmpty()) {
             return;
         }
 
         List<PathMatcherRule> matchers = parseMatchers(properties);
-        RangeMatcher damageMatcher = parseRangeMatcher(properties.getProperty("damage"));
-        RangeMatcher stackSizeMatcher = parseRangeMatcher(properties.getProperty("stackSize"));
-        RangeMatcher enchantLevelMatcher = parseRangeMatcher(properties.getProperty("enchantmentLevels"));
-        Set<Identifier> enchantmentIds = parseIdentifierSet(properties.getProperty("enchantments", properties.getProperty("enchantmentIDs", "")));
-        Boolean damaged = parseBoolean01(properties.getProperty("damaged"));
-        Boolean unbreakable = parseBoolean01(properties.getProperty("unbreakable"));
-        Identifier potion = parsePotion(properties.getProperty("potion"));
-        int weight = parseInt(properties.getProperty("weight")).orElse(0);
+        RangeMatcher damageMatcher = parseRangeMatcher(getProperty(properties, "damage"));
+        Integer damageMask = parseIntFlexible(getProperty(properties, "damageMask")).orElse(null);
+        RangeMatcher stackSizeMatcher = parseRangeMatcher(getProperty(properties, "stackSize"));
+        RangeMatcher enchantLevelMatcher = parseRangeMatcher(getProperty(properties, "enchantmentLevels"));
+        String enchantmentsRaw = getProperty(properties, "enchantments");
+        if (enchantmentsRaw == null || enchantmentsRaw.isBlank()) {
+            enchantmentsRaw = getProperty(properties, "enchantmentIDs");
+        }
+        Set<Identifier> enchantmentIds = parseIdentifierSet(enchantmentsRaw);
+        Boolean damaged = parseBoolean01(getProperty(properties, "damaged"));
+        Boolean unbreakable = parseBoolean01(getProperty(properties, "unbreakable"));
+        Identifier potion = parsePotion(getProperty(properties, "potion"));
+        int weight = parseInt(getProperty(properties, "weight")).orElse(0);
+        HandMatch handMatch = HandMatch.parse(getProperty(properties, "hand"));
 
         out.add(new CitRule(
+                ruleType,
                 items,
                 matchers,
                 damageMatcher,
+                damageMask,
                 stackSizeMatcher,
                 enchantLevelMatcher,
                 enchantmentIds,
@@ -614,17 +1118,22 @@ public final class NbtRenderOverrideResolver {
                 unbreakable,
                 potion,
                 weight,
+                handMatch,
                 itemModelId,
                 sourceTexture,
                 ruleKey,
                 itemTextureCandidates,
-                armorTextures
+                armorTextures,
+                elytraTextureCandidates
         ));
     }
 
     private static Map<Identifier, GeneratedModelDef> buildGeneratedItemModelMap(List<CitRule> rules, Map<Identifier, Identifier> baseModels) {
         Map<Identifier, GeneratedModelDef> map = new HashMap<>();
         for (CitRule rule : rules) {
+            if (rule.type() != RuleType.ITEM) {
+                continue;
+            }
             if (rule.sourceTexture() == null) {
                 continue;
             }
@@ -645,6 +1154,9 @@ public final class NbtRenderOverrideResolver {
         }
         Set<Identifier> result = new HashSet<>();
         for (CitRule rule : rules) {
+            if (rule.type() != RuleType.ITEM) {
+                continue;
+            }
             Identifier modelId = rule.itemModelId();
             if (modelId != null) {
                 result.add(modelId);
@@ -673,7 +1185,10 @@ public final class NbtRenderOverrideResolver {
     }
 
     static String normalizeOptifineModelJson(String relPath, String jsonText) {
-        if (relPath == null || !relPath.startsWith("optifine/cit/") || jsonText == null || jsonText.isBlank()) {
+        if (relPath == null || jsonText == null || jsonText.isBlank()) {
+            return jsonText;
+        }
+        if (!isCitRootPath(relPath)) {
             return jsonText;
         }
         try {
@@ -702,10 +1217,97 @@ public final class NbtRenderOverrideResolver {
                     changed = true;
                 }
             }
+            JsonElement parentEl = obj.get("parent");
+            if (parentEl != null && parentEl.isJsonPrimitive() && parentEl.getAsJsonPrimitive().isString()) {
+                String parentRaw = parentEl.getAsString();
+                String resolvedParent = resolveOptifineModelPath(dir, parentRaw);
+                if (resolvedParent != null && !resolvedParent.equals(parentRaw)) {
+                    obj.addProperty("parent", resolvedParent);
+                    changed = true;
+                }
+            }
+            JsonElement overridesEl = obj.get("overrides");
+            if (overridesEl != null && overridesEl.isJsonArray()) {
+                boolean overridesChanged = false;
+                for (JsonElement overrideEl : overridesEl.getAsJsonArray()) {
+                    if (!overrideEl.isJsonObject()) {
+                        continue;
+                    }
+                    JsonObject overrideObj = overrideEl.getAsJsonObject();
+                    JsonElement modelEl = overrideObj.get("model");
+                    if (modelEl == null || !modelEl.isJsonPrimitive() || !modelEl.getAsJsonPrimitive().isString()) {
+                        continue;
+                    }
+                    String modelRaw = modelEl.getAsString();
+                    String resolvedModel = resolveOptifineModelPath(dir, modelRaw);
+                    if (resolvedModel != null && !resolvedModel.equals(modelRaw)) {
+                        overrideObj.addProperty("model", resolvedModel);
+                        overridesChanged = true;
+                    }
+                }
+                if (overridesChanged) {
+                    changed = true;
+                }
+            }
             return changed ? obj.toString() : jsonText;
         } catch (Exception e) {
             return jsonText;
         }
+    }
+
+    private static boolean applyTextureSizeScaling(JsonObject obj) {
+        JsonElement sizeEl = obj.get("texture_size");
+        if (sizeEl == null || !sizeEl.isJsonArray() || sizeEl.getAsJsonArray().size() < 2) {
+            return false;
+        }
+        float width = sizeEl.getAsJsonArray().get(0).getAsFloat();
+        float height = sizeEl.getAsJsonArray().get(1).getAsFloat();
+        if (width <= 0 || height <= 0) {
+            return false;
+        }
+        float scaleU = 16.0f / width;
+        float scaleV = 16.0f / height;
+        if (Math.abs(scaleU - 1.0f) < 0.0001f && Math.abs(scaleV - 1.0f) < 0.0001f) {
+            return false;
+        }
+        JsonElement elementsEl = obj.get("elements");
+        if (elementsEl == null || !elementsEl.isJsonArray()) {
+            return false;
+        }
+        boolean changed = false;
+        for (JsonElement elementEl : elementsEl.getAsJsonArray()) {
+            if (!elementEl.isJsonObject()) {
+                continue;
+            }
+            JsonObject elementObj = elementEl.getAsJsonObject();
+            JsonElement facesEl = elementObj.get("faces");
+            if (facesEl == null || !facesEl.isJsonObject()) {
+                continue;
+            }
+            JsonObject faces = facesEl.getAsJsonObject();
+            for (Map.Entry<String, JsonElement> faceEntry : faces.entrySet()) {
+                JsonElement faceEl = faceEntry.getValue();
+                if (faceEl == null || !faceEl.isJsonObject()) {
+                    continue;
+                }
+                JsonObject faceObj = faceEl.getAsJsonObject();
+                JsonElement uvEl = faceObj.get("uv");
+                if (uvEl == null || !uvEl.isJsonArray() || uvEl.getAsJsonArray().size() < 4) {
+                    continue;
+                }
+                float u0 = uvEl.getAsJsonArray().get(0).getAsFloat() * scaleU;
+                float v0 = uvEl.getAsJsonArray().get(1).getAsFloat() * scaleV;
+                float u1 = uvEl.getAsJsonArray().get(2).getAsFloat() * scaleU;
+                float v1 = uvEl.getAsJsonArray().get(3).getAsFloat() * scaleV;
+                faceObj.add("uv", new com.google.gson.JsonArray());
+                faceObj.getAsJsonArray("uv").add(u0);
+                faceObj.getAsJsonArray("uv").add(v0);
+                faceObj.getAsJsonArray("uv").add(u1);
+                faceObj.getAsJsonArray("uv").add(v1);
+                changed = true;
+            }
+        }
+        return changed;
     }
 
     private static String resolveOptifineTexturePath(String dir, String tex) {
@@ -714,7 +1316,7 @@ public final class NbtRenderOverrideResolver {
         }
         if (tex.startsWith("textures/")) {
             String trimmed = tex.substring("textures/".length());
-            if (trimmed.startsWith("optifine/cit/")) {
+            if (isCitRootPath(trimmed)) {
                 return trimmed;
             }
             return null;
@@ -722,13 +1324,47 @@ public final class NbtRenderOverrideResolver {
         if (tex.startsWith("./")) {
             return dir + "/" + tex.substring(2);
         }
-        if (tex.startsWith("optifine/cit/")) {
+        if (isCitRootPath(tex)) {
             return tex;
         }
         if (tex.startsWith("item/") || tex.startsWith("block/") || tex.contains(":")) {
             return null;
         }
         return dir + "/" + tex;
+    }
+
+    private static String resolveOptifineModelPath(String dir, String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String value = raw.trim().replace("\\", "/");
+        String namespace = null;
+        String path = value;
+        int colon = value.indexOf(':');
+        if (colon >= 0) {
+            namespace = value.substring(0, colon);
+            path = value.substring(colon + 1);
+        }
+        if (path.endsWith(".json")) {
+            path = path.substring(0, path.length() - 5);
+        }
+        if (path.startsWith("models/")) {
+            path = path.substring("models/".length());
+        }
+
+        String resolved = null;
+        if (path.startsWith("./")) {
+            resolved = dir + "/" + path.substring(2);
+        } else if (isCitRootPath(path)) {
+            resolved = path;
+        } else if (!path.contains("/")) {
+            resolved = dir + "/" + path;
+        } else {
+            return null;
+        }
+
+        resolved = normalizePath(resolved);
+        return namespace != null ? namespace + ":" + resolved : resolved;
     }
 
     private static Map<Identifier, Identifier> loadItemAssetModelsFromManager(ResourceManager manager) {
@@ -801,7 +1437,11 @@ public final class NbtRenderOverrideResolver {
             model = model.substring("models/".length());
         }
 
-        if (model.startsWith("item/") || model.startsWith("optifine/") || model.startsWith("cit/")) {
+        if (model.startsWith("item/")
+                || model.startsWith("optifine/")
+                || model.startsWith("mcpatcher/")
+                || model.startsWith("citresewn/")
+                || model.startsWith("cit/")) {
             return Identifier.of(namespace, model);
         }
 
@@ -886,7 +1526,9 @@ public final class NbtRenderOverrideResolver {
                     addId(ids, namespace, "textures/" + rel);
                 }
             }
-            addId(ids, namespace, "optifine/cit/" + path);
+            for (String root : CIT_ROOTS) {
+                addId(ids, namespace, root + "/cit/" + path);
+            }
             addId(ids, namespace, "textures/models/armor/" + path);
             addId(ids, namespace, "textures/" + path);
             return ids;
@@ -898,6 +1540,113 @@ public final class NbtRenderOverrideResolver {
             addId(ids, namespace, "textures/" + normalized);
         }
         return ids;
+    }
+
+    private static String getProperty(Properties properties, String key) {
+        if (properties == null || key == null) {
+            return null;
+        }
+        return firstNonBlank(
+                properties.getProperty(key),
+                properties.getProperty("citresewn:" + key),
+                properties.getProperty("citresewn." + key),
+                properties.getProperty("optifine:" + key),
+                properties.getProperty("optifine." + key),
+                properties.getProperty("mcpatcher:" + key),
+                properties.getProperty("mcpatcher." + key)
+        );
+    }
+
+    private static String stripNamespacePrefix(String key) {
+        if (key == null) {
+            return null;
+        }
+        if (key.startsWith("citresewn:")) {
+            return key.substring("citresewn:".length());
+        }
+        if (key.startsWith("citresewn.")) {
+            return key.substring("citresewn.".length());
+        }
+        if (key.startsWith("optifine:")) {
+            return key.substring("optifine:".length());
+        }
+        if (key.startsWith("optifine.")) {
+            return key.substring("optifine.".length());
+        }
+        if (key.startsWith("mcpatcher:")) {
+            return key.substring("mcpatcher:".length());
+        }
+        if (key.startsWith("mcpatcher.")) {
+            return key.substring("mcpatcher.".length());
+        }
+        return key;
+    }
+
+    private static String normalizeComponentPath(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String path = raw.replace("\\:", ":").trim();
+        if (path.isEmpty()) {
+            return path;
+        }
+        String[] parts = path.split("\\.");
+        if (parts.length == 0) {
+            return path;
+        }
+        parts[0] = normalizeComponentSegment(parts[0], true);
+        for (int i = 1; i < parts.length; i++) {
+            parts[i] = normalizeComponentSegment(parts[i], false);
+        }
+        return String.join(".", parts);
+    }
+
+    private static String normalizeComponentSegment(String segment, boolean first) {
+        if (segment == null) {
+            return null;
+        }
+        if (segment.startsWith("~")) {
+            return "minecraft:" + segment.substring(1);
+        }
+        if (first && !segment.contains(":")) {
+            return "minecraft:" + segment;
+        }
+        return segment;
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private static void addElytraEntityCandidate(List<Identifier> ids, String namespace, String raw) {
+        if (raw == null || raw.isBlank()) {
+            return;
+        }
+        String path = raw.trim().replace("\\", "/");
+        if (path.startsWith("./")) {
+            return;
+        }
+        String ns = namespace;
+        int colon = path.indexOf(':');
+        if (colon >= 0) {
+            ns = path.substring(0, colon);
+            path = path.substring(colon + 1);
+        }
+        if (path.endsWith(".png")) {
+            path = path.substring(0, path.length() - 4);
+        }
+        if (path.contains("/")) {
+            return;
+        }
+        addId(ids, ns, normalizePath("textures/entity/" + path + ".png"));
     }
 
     private static List<Identifier> parseImpliedTexture(String namespace, String propertiesPath) {
@@ -942,7 +1691,7 @@ public final class NbtRenderOverrideResolver {
         return dir;
     }
 
-    private static CitRule findMatchingRule(ItemStack stack, boolean armorMode) {
+    private static CitRule findMatchingRule(ItemStack stack, RuleType mode, HandMatch hand) {
         if (stack == null || stack.isEmpty()) {
             return null;
         }
@@ -954,7 +1703,8 @@ public final class NbtRenderOverrideResolver {
                 : null;
         RuleCacheKey cacheKey = new RuleCacheKey(
                 itemId,
-                armorMode,
+                mode,
+                hand == null ? HandMatch.ANY : hand,
                 stack.getCount(),
                 stack.isDamageable() ? stack.getDamage() : -1,
                 hashNbt(fullStackNbt),
@@ -972,24 +1722,28 @@ public final class NbtRenderOverrideResolver {
         }
 
         for (CitRule rule : rules) {
-            if (armorMode && rule.armorTextures().isEmpty()) {
+            if (rule.type() != mode) {
                 continue;
             }
-            if (!armorMode && rule.itemModelId() == null && rule.itemTextureCandidates().isEmpty()) {
+            if (mode == RuleType.ARMOR && rule.armorTextures().isEmpty()) {
+                continue;
+            }
+            if (mode == RuleType.ITEM && rule.itemModelId() == null && rule.itemTextureCandidates().isEmpty()) {
+                continue;
+            }
+            if (mode == RuleType.ELYTRA && rule.elytraTextureCandidates().isEmpty()) {
                 continue;
             }
             if (!rule.items().contains(itemId)) {
                 continue;
             }
-            if (!matchesRule(rule, stack, fullStackNbt, componentsNbt)) {
+            if (!matchesRule(rule, stack, fullStackNbt, componentsNbt, hand)) {
                 continue;
             }
-            debugShulkerMatch(itemId, fullStackNbt, rule, true);
             RULE_CACHE.put(cacheKey, rule);
             return rule;
         }
 
-        debugShulkerMatch(itemId, fullStackNbt, null, false);
         RULE_CACHE.put(cacheKey, CitRule.NO_MATCH);
         return null;
     }
@@ -1011,12 +1765,25 @@ public final class NbtRenderOverrideResolver {
         return Map.copyOf(map);
     }
 
-    private static boolean matchesRule(CitRule rule, ItemStack stack, NbtCompound fullStackNbt, NbtCompound componentsNbt) {
+    private static boolean matchesRule(CitRule rule, ItemStack stack, NbtCompound fullStackNbt, NbtCompound componentsNbt, HandMatch hand) {
+        if (rule.handMatch() != null && rule.handMatch() != HandMatch.ANY) {
+            if (hand == null || hand == HandMatch.ANY) {
+                return false;
+            }
+            if (rule.handMatch() != hand) {
+                return false;
+            }
+        }
+
         if (rule.damageMatcher() != null) {
             if (!stack.isDamageable()) {
                 return false;
             }
-            if (!rule.damageMatcher().matches(stack.getDamage(), stack.getMaxDamage(), false)) {
+            int damageValue = stack.getDamage();
+            if (rule.damageMask() != null) {
+                damageValue = damageValue & rule.damageMask();
+            }
+            if (!rule.damageMatcher().matches(damageValue, stack.getMaxDamage(), false)) {
                 return false;
             }
         }
@@ -1040,14 +1807,7 @@ public final class NbtRenderOverrideResolver {
         }
 
         if (rule.potion() != null) {
-            PotionContentsComponent potionContents = stack.get(DataComponentTypes.POTION_CONTENTS);
-            Identifier potionId = potionContents == null
-                    ? null
-                    : potionContents.potion()
-                    .flatMap(RegistryEntry::getKey)
-                    .map(RegistryKey::getValue)
-                    .orElse(null);
-
+            Identifier potionId = resolvePotionId(stack, fullStackNbt, componentsNbt);
             if (!rule.potion().equals(potionId)) {
                 return false;
             }
@@ -1075,10 +1835,20 @@ public final class NbtRenderOverrideResolver {
 
             if (rule.enchantLevelMatcher() != null) {
                 boolean levelMatch = false;
-                for (var entry : enchants.getEnchantmentEntries()) {
-                    if (rule.enchantLevelMatcher().matches(entry.getIntValue(), 255, false)) {
-                        levelMatch = true;
-                        break;
+                if (rule.enchantmentIds().isEmpty()) {
+                    int total = 0;
+                    for (var entry : enchants.getEnchantmentEntries()) {
+                        total += entry.getIntValue();
+                    }
+                    levelMatch = rule.enchantLevelMatcher().matches(total, 255, false);
+                } else {
+                    for (var entry : enchants.getEnchantmentEntries()) {
+                        Identifier enchantId = entry.getKey().getKey().map(RegistryKey::getValue).orElse(null);
+                        if (enchantId != null && rule.enchantmentIds().contains(enchantId)
+                                && rule.enchantLevelMatcher().matches(entry.getIntValue(), 255, false)) {
+                            levelMatch = true;
+                            break;
+                        }
                     }
                 }
                 if (!levelMatch) {
@@ -1105,11 +1875,17 @@ public final class NbtRenderOverrideResolver {
             ListMatcherKey key = entry.getKey();
             NbtCompound root = key.source() == SourceNbt.COMPONENTS_ONLY ? componentsNbt : fullStackNbt;
             if (root == null) {
-                return false;
+                if (!allMatchersMatchNull(entry.getValue())) {
+                    return false;
+                }
+                continue;
             }
             NbtElement listElement = PathMatcherRule.resolvePathWithFallback(root, key.listPath());
-            if (!(listElement instanceof net.minecraft.nbt.NbtList list)) {
-                return false;
+            if (!(listElement instanceof net.minecraft.nbt.NbtList list) || list.isEmpty()) {
+                if (!allMatchersMatchNull(entry.getValue())) {
+                    return false;
+                }
+                continue;
             }
             if (!matchesListGroup(list, key.index(), entry.getValue())) {
                 return false;
@@ -1124,6 +1900,40 @@ public final class NbtRenderOverrideResolver {
         }
 
         return true;
+    }
+
+    private static Identifier resolvePotionId(ItemStack stack, NbtCompound fullStackNbt, NbtCompound componentsNbt) {
+        PotionContentsComponent potionContents = stack.get(DataComponentTypes.POTION_CONTENTS);
+        Identifier potionId = potionContents == null
+                ? null
+                : potionContents.potion()
+                .flatMap(RegistryEntry::getKey)
+                .map(RegistryKey::getValue)
+                .orElse(null);
+        if (potionId != null) {
+            return potionId;
+        }
+
+        String raw = null;
+        if (fullStackNbt != null) {
+            raw = readString(fullStackNbt, "Potion");
+            if (isBlank(raw) && fullStackNbt.contains("tag", NbtElement.COMPOUND_TYPE)) {
+                raw = readString(fullStackNbt.getCompound("tag"), "Potion");
+            }
+        }
+        if (isBlank(raw) && componentsNbt != null) {
+            if (componentsNbt.contains("minecraft:custom_data", NbtElement.COMPOUND_TYPE)) {
+                raw = readString(componentsNbt.getCompound("minecraft:custom_data"), "Potion", "potion");
+            }
+            if (isBlank(raw) && componentsNbt.contains("minecraft:potion_contents", NbtElement.COMPOUND_TYPE)) {
+                raw = readString(componentsNbt.getCompound("minecraft:potion_contents"), "potion");
+            }
+        }
+
+        if (isBlank(raw)) {
+            return null;
+        }
+        return Identifier.tryParse(raw);
     }
 
     private static boolean matchesListGroup(net.minecraft.nbt.NbtList list, int preferredIndex, List<ListMatcher> matchers) {
@@ -1146,66 +1956,27 @@ public final class NbtRenderOverrideResolver {
         return false;
     }
 
-    private static void debugShulkerMatch(Identifier itemId, NbtCompound fullStackNbt, CitRule rule, boolean matched) {
-        if (itemId == null || itemId.getPath() == null || !itemId.getPath().contains("shulker")) {
-            return;
-        }
-        int count = SHULKER_DEBUG_COUNT.getAndIncrement();
-        if (count >= 10) {
-            return;
-        }
-        String summary = summarizeShulkerContents(fullStackNbt);
-        if (matched && rule != null) {
-            Pcustomtextures.LOGGER.info("[pcustomtextures][debug] shulker rule matched item={} model={} summary={}", itemId, rule.itemModelId(), summary);
-        } else if (!matched) {
-            Pcustomtextures.LOGGER.info("[pcustomtextures][debug] shulker no rule match item={} summary={}", itemId, summary);
-        }
-    }
-
-    private static String summarizeShulkerContents(NbtCompound fullStackNbt) {
-        if (fullStackNbt == null) {
-            return "nbt=null";
-        }
-        if (!fullStackNbt.contains("BlockEntityTag", NbtElement.COMPOUND_TYPE)) {
-            return "BlockEntityTag=missing";
-        }
-        NbtCompound blockEntity = fullStackNbt.getCompound("BlockEntityTag");
-        if (!blockEntity.contains("Items", NbtElement.LIST_TYPE)) {
-            return "BlockEntityTag.Items=missing";
-        }
-        NbtList items = blockEntity.getList("Items", NbtElement.COMPOUND_TYPE);
-        String slot0 = null;
-        String ench0 = null;
-        for (NbtElement element : items) {
-            if (!(element instanceof NbtCompound entry)) {
-                continue;
-            }
-            int slot = entry.getByte("Slot");
-            if (slot != 0) {
-                continue;
-            }
-            slot0 = entry.getString("id");
-            if (entry.contains("tag", NbtElement.COMPOUND_TYPE)) {
-                NbtCompound tag = entry.getCompound("tag");
-                if (tag.contains("Enchantments", NbtElement.LIST_TYPE)) {
-                    NbtList enchList = tag.getList("Enchantments", NbtElement.COMPOUND_TYPE);
-                    if (!enchList.isEmpty() && enchList.get(0) instanceof NbtCompound ench) {
-                        ench0 = ench.getString("id") + ":" + ench.getInt("lvl");
-                    }
-                }
-            }
-            break;
-        }
-        return "slot0Id=" + (slot0 == null ? "null" : slot0) + ",slot0Ench=" + (ench0 == null ? "null" : ench0);
-    }
-
     private static boolean matchesListElement(NbtElement element, List<ListMatcher> matchers) {
         if (element == null) {
             return false;
         }
         for (ListMatcher matcher : matchers) {
-            NbtElement resolved = PathMatcherRule.resolvePathOnElement(element, matcher.subPath());
-            if (resolved == null || !matcher.matcher().matches(resolved)) {
+            NbtElement resolved = matcher.subPath().isEmpty()
+                    ? element
+                    : PathMatcherRule.resolvePathOnElement(element, matcher.subPath());
+            if (!matcher.matcher().matchesNullable(resolved)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean allMatchersMatchNull(List<ListMatcher> matchers) {
+        if (matchers == null || matchers.isEmpty()) {
+            return true;
+        }
+        for (ListMatcher matcher : matchers) {
+            if (!matcher.matcher().matchesNullable(null)) {
                 return false;
             }
         }
@@ -1221,7 +1992,250 @@ public final class NbtRenderOverrideResolver {
         NbtElement nbt = stack.toNbt(client.world.getRegistryManager());
         if (nbt instanceof NbtCompound compound) {
             injectBlockEntityTagFromComponents(compound);
+            injectDisplayNameFromComponents(compound, stack);
+            injectLoreFromComponents(compound, stack);
+            injectPotionTagsFromComponents(compound);
             return compound;
+        }
+        return null;
+    }
+
+    private static void injectDisplayNameFromComponents(NbtCompound root, ItemStack stack) {
+        if (root == null || stack == null) {
+            return;
+        }
+        if (root.contains("display", NbtElement.COMPOUND_TYPE)) {
+            NbtCompound display = root.getCompound("display");
+            if (display.contains("Name", NbtElement.STRING_TYPE)) {
+                return;
+            }
+        }
+        var name = stack.get(DataComponentTypes.CUSTOM_NAME);
+        if (name == null) {
+            return;
+        }
+        NbtCompound display = root.contains("display", NbtElement.COMPOUND_TYPE)
+                ? root.getCompound("display")
+                : new NbtCompound();
+        display.putString("Name", name.getString());
+        root.put("display", display);
+    }
+
+    private static void injectLoreFromComponents(NbtCompound root, ItemStack stack) {
+        if (root == null || stack == null) {
+            return;
+        }
+        if (root.contains("display", NbtElement.COMPOUND_TYPE)) {
+            NbtCompound display = root.getCompound("display");
+            if (display.contains("Lore", NbtElement.LIST_TYPE)) {
+                return;
+            }
+        }
+        Object lore = stack.get(DataComponentTypes.LORE);
+        if (lore == null) {
+            return;
+        }
+        List<?> lines = extractLoreLines(lore);
+        if (lines == null || lines.isEmpty()) {
+            return;
+        }
+        NbtList list = new NbtList();
+        for (Object line : lines) {
+            if (line instanceof Text text) {
+                list.add(NbtString.of(text.getString()));
+            } else if (line != null) {
+                list.add(NbtString.of(String.valueOf(line)));
+            }
+        }
+        if (list.isEmpty()) {
+            return;
+        }
+        NbtCompound display = root.contains("display", NbtElement.COMPOUND_TYPE)
+                ? root.getCompound("display")
+                : new NbtCompound();
+        display.put("Lore", list);
+        root.put("display", display);
+    }
+
+    private static void injectPotionTagsFromComponents(NbtCompound root) {
+        if (root == null || !root.contains("components", NbtElement.COMPOUND_TYPE)) {
+            return;
+        }
+        NbtCompound components = root.getCompound("components");
+        NbtCompound potionContents = components.contains("minecraft:potion_contents", NbtElement.COMPOUND_TYPE)
+                ? components.getCompound("minecraft:potion_contents")
+                : null;
+        NbtCompound customData = components.contains("minecraft:custom_data", NbtElement.COMPOUND_TYPE)
+                ? components.getCompound("minecraft:custom_data")
+                : null;
+
+        if (!root.contains("Potion", NbtElement.STRING_TYPE)) {
+            String potionId = readString(potionContents, "potion", "Potion");
+            if (isBlank(potionId) && customData != null) {
+                potionId = readString(customData, "Potion", "potion");
+            }
+            if (!isBlank(potionId)) {
+                root.putString("Potion", potionId);
+            }
+        }
+
+        if (!root.contains("CustomPotionColor", NbtElement.INT_TYPE)) {
+            Integer color = readInt(potionContents, "custom_color", "CustomPotionColor", "customColor");
+            if (color == null && customData != null) {
+                color = readInt(customData, "CustomPotionColor", "custom_color", "customColor");
+            }
+            if (color != null) {
+                root.putInt("CustomPotionColor", color);
+            }
+        }
+
+        if (!root.contains("CustomPotionEffects", NbtElement.LIST_TYPE)) {
+            NbtList source = null;
+            if (potionContents != null && potionContents.contains("custom_effects", NbtElement.LIST_TYPE)) {
+                source = potionContents.getList("custom_effects", NbtElement.COMPOUND_TYPE);
+            }
+            if ((source == null || source.isEmpty()) && customData != null) {
+                if (customData.contains("custom_potion_effects", NbtElement.LIST_TYPE)) {
+                    source = customData.getList("custom_potion_effects", NbtElement.COMPOUND_TYPE);
+                } else if (customData.contains("CustomPotionEffects", NbtElement.LIST_TYPE)) {
+                    source = customData.getList("CustomPotionEffects", NbtElement.COMPOUND_TYPE);
+                }
+            }
+            if (source != null && !source.isEmpty()) {
+                NbtList legacy = buildLegacyPotionEffects(source);
+                if (!legacy.isEmpty()) {
+                    root.put("CustomPotionEffects", legacy);
+                }
+            }
+        }
+    }
+
+    private static NbtList buildLegacyPotionEffects(NbtList source) {
+        NbtList legacy = new NbtList();
+        for (int i = 0; i < source.size(); i++) {
+            NbtElement element = source.get(i);
+            if (!(element instanceof NbtCompound effect)) {
+                continue;
+            }
+            NbtCompound legacyEntry = new NbtCompound();
+            String id = readString(effect, "id", "Id");
+            if (!isBlank(id)) {
+                legacyEntry.putString("Id", id);
+            } else {
+                Integer numericId = readInt(effect, "id", "Id");
+                if (numericId != null) {
+                    legacyEntry.putInt("Id", numericId);
+                }
+            }
+            Integer amplifier = readInt(effect, "amplifier", "Amplifier");
+            if (amplifier != null) {
+                legacyEntry.putInt("Amplifier", amplifier);
+            }
+            Integer duration = readInt(effect, "duration", "Duration");
+            if (duration != null) {
+                legacyEntry.putInt("Duration", duration);
+            }
+            Boolean ambient = readBooleanLike(effect, "ambient", "Ambient");
+            if (ambient != null) {
+                legacyEntry.putByte("Ambient", (byte) (ambient ? 1 : 0));
+            }
+            Boolean showParticles = readBooleanLike(effect, "show_particles", "showParticles", "ShowParticles");
+            if (showParticles != null) {
+                legacyEntry.putByte("ShowParticles", (byte) (showParticles ? 1 : 0));
+            }
+            Boolean showIcon = readBooleanLike(effect, "show_icon", "showIcon", "ShowIcon");
+            if (showIcon != null) {
+                legacyEntry.putByte("ShowIcon", (byte) (showIcon ? 1 : 0));
+            }
+            if (!legacyEntry.isEmpty()) {
+                legacy.add(legacyEntry);
+            }
+        }
+        return legacy;
+    }
+
+    private static String readString(NbtCompound compound, String... keys) {
+        if (compound == null || keys == null) {
+            return null;
+        }
+        for (String key : keys) {
+            if (key == null) {
+                continue;
+            }
+            if (compound.contains(key, NbtElement.STRING_TYPE)) {
+                String value = compound.getString(key);
+                if (!isBlank(value)) {
+                    return value;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static Integer readInt(NbtCompound compound, String... keys) {
+        if (compound == null || keys == null) {
+            return null;
+        }
+        for (String key : keys) {
+            if (key == null || !compound.contains(key)) {
+                continue;
+            }
+            NbtElement element = compound.get(key);
+            if (element instanceof AbstractNbtNumber number) {
+                return number.intValue();
+            }
+            if (element instanceof NbtString str) {
+                Integer parsed = parseIntFlexible(str.asString()).orElse(null);
+                if (parsed != null) {
+                    return parsed;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static Boolean readBooleanLike(NbtCompound compound, String... keys) {
+        if (compound == null || keys == null) {
+            return null;
+        }
+        for (String key : keys) {
+            if (key == null || !compound.contains(key)) {
+                continue;
+            }
+            NbtElement element = compound.get(key);
+            if (element instanceof NbtByte b) {
+                return b.byteValue() != 0;
+            }
+            if (element instanceof AbstractNbtNumber number) {
+                return number.intValue() != 0;
+            }
+            if (element instanceof NbtString str) {
+                String raw = str.asString().trim().toLowerCase(Locale.ROOT);
+                if (raw.equals("true") || raw.equals("1")) {
+                    return true;
+                }
+                if (raw.equals("false") || raw.equals("0")) {
+                    return false;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private static List<?> extractLoreLines(Object lore) {
+        for (String method : new String[]{"lines", "getLines", "value"}) {
+            try {
+                Method m = lore.getClass().getMethod(method);
+                Object value = m.invoke(lore);
+                if (value instanceof List<?> list) {
+                    return list;
+                }
+            } catch (Exception ignored) {
+            }
         }
         return null;
     }
@@ -1390,16 +2404,17 @@ public final class NbtRenderOverrideResolver {
         List<PathMatcherRule> matchers = new ArrayList<>();
 
         for (String key : properties.stringPropertyNames()) {
-            if (key.startsWith("nbt.")) {
-                String path = key.substring("nbt.".length());
+            String normalized = stripNamespacePrefix(key);
+            if (normalized.startsWith("nbt.")) {
+                String path = normalized.substring("nbt.".length());
                 ValueMatcher matcher = ValueMatcher.parse(properties.getProperty(key, ""));
                 if (matcher != null) {
                     matchers.add(new PathMatcherRule(SourceNbt.FULL_STACK, path, matcher));
                 }
-            } else if (key.startsWith("components.")) {
-                String path = key.substring("components.".length());
+            } else if (normalized.startsWith("components.")) {
+                String path = normalizeComponentPath(normalized.substring("components.".length()));
                 ValueMatcher matcher = ValueMatcher.parse(properties.getProperty(key, ""));
-                if (matcher != null) {
+                if (matcher != null && path != null && !path.isBlank()) {
                     matchers.add(new PathMatcherRule(SourceNbt.COMPONENTS_ONLY, path, matcher));
                 }
             }
@@ -1417,20 +2432,23 @@ public final class NbtRenderOverrideResolver {
         boolean percent = raw.contains("%");
         String cleaned = raw.replace("%", "").trim();
 
-        for (String token : cleaned.split("\\s+")) {
+        for (String tokenRaw : cleaned.split("\\s+")) {
+            String token = tokenRaw.replace("(", "").replace(")", "");
             if (token.isBlank()) {
                 continue;
             }
 
-            String[] parts = token.split("-");
-            if (parts.length == 1) {
-                Integer value = parseInt(parts[0]).orElse(null);
+            int sep = findRangeSeparator(token);
+            if (sep < 0) {
+                Integer value = parseIntFlexible(token).orElse(null);
                 if (value != null) {
                     ranges.add(new Range(value, value));
                 }
             } else {
-                Integer min = parts[0].isBlank() ? Integer.MIN_VALUE : parseInt(parts[0]).orElse(null);
-                Integer max = parts[1].isBlank() ? Integer.MAX_VALUE : parseInt(parts[1]).orElse(null);
+                String left = token.substring(0, sep);
+                String right = token.substring(sep + 1);
+                Integer min = left.isBlank() ? Integer.MIN_VALUE : parseIntFlexible(left).orElse(null);
+                Integer max = right.isBlank() ? Integer.MAX_VALUE : parseIntFlexible(right).orElse(null);
                 if (min != null && max != null) {
                     ranges.add(new Range(min, max));
                 }
@@ -1463,6 +2481,17 @@ public final class NbtRenderOverrideResolver {
 
         for (String token : raw.split("\\s+")) {
             if (token.isBlank()) {
+                continue;
+            }
+            if (token.chars().allMatch(Character::isDigit)) {
+                try {
+                    int legacyId = Integer.parseInt(token);
+                    Identifier legacy = LEGACY_ENCHANTMENT_IDS.get(legacyId);
+                    if (legacy != null) {
+                        set.add(legacy);
+                    }
+                } catch (Exception ignored) {
+                }
                 continue;
             }
             Identifier id = Identifier.tryParse(token.contains(":") ? token : "minecraft:" + token);
@@ -1526,6 +2555,36 @@ public final class NbtRenderOverrideResolver {
         }
     }
 
+    private static Optional<Integer> parseIntFlexible(String value) {
+        if (value == null || value.isBlank()) {
+            return Optional.empty();
+        }
+        String trimmed = value.trim();
+        try {
+            if (trimmed.startsWith("#")) {
+                return Optional.of(Integer.parseUnsignedInt(trimmed.substring(1), 16));
+            }
+            if (trimmed.startsWith("0x") || trimmed.startsWith("0X")) {
+                return Optional.of(Integer.parseUnsignedInt(trimmed.substring(2), 16));
+            }
+            return Optional.of(Integer.parseInt(trimmed));
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    private static int findRangeSeparator(String token) {
+        if (token == null) {
+            return -1;
+        }
+        for (int i = 1; i < token.length(); i++) {
+            if (token.charAt(i) == '-') {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     private static String normalizePath(String raw) {
         String input = raw.replace("\\", "/");
         String[] parts = input.split("/");
@@ -1551,9 +2610,11 @@ public final class NbtRenderOverrideResolver {
     }
 
     private record CitRule(
+            RuleType type,
             Set<Identifier> items,
             List<PathMatcherRule> matchers,
             RangeMatcher damageMatcher,
+            Integer damageMask,
             RangeMatcher stackSizeMatcher,
             RangeMatcher enchantLevelMatcher,
             Set<Identifier> enchantmentIds,
@@ -1561,18 +2622,21 @@ public final class NbtRenderOverrideResolver {
             Boolean unbreakable,
             Identifier potion,
             int weight,
+            HandMatch handMatch,
             Identifier itemModelId,
             SourceTexture sourceTexture,
             String ruleKey,
             List<Identifier> itemTextureCandidates,
-            Map<String, List<Identifier>> armorTextures
+            Map<String, List<Identifier>> armorTextures,
+            List<Identifier> elytraTextureCandidates
     ) {
-        static final CitRule NO_MATCH = new CitRule(Set.of(), List.of(), null, null, null, Set.of(), null, null, null, 0, null, null, "no_match", List.of(), Map.of());
+        static final CitRule NO_MATCH = new CitRule(RuleType.ITEM, Set.of(), List.of(), null, null, null, null, Set.of(), null, null, null, 0, HandMatch.ANY, null, null, "no_match", List.of(), Map.of(), List.of());
     }
 
     private record RuleCacheKey(
             Identifier itemId,
-            boolean armorMode,
+            RuleType mode,
+            HandMatch hand,
             int count,
             int damage,
             int fullNbtHash,
@@ -1606,10 +2670,10 @@ public final class NbtRenderOverrideResolver {
     private record PathMatcherRule(SourceNbt source, String path, ValueMatcher matcher) {
         boolean matches(NbtCompound root) {
             if (root == null) {
-                return false;
+                return matcher.matchesNullable(null);
             }
             NbtElement element = resolvePath(root, path);
-            return element != null && matcher.matches(element);
+            return matcher.matchesNullable(element);
         }
 
         private static NbtElement resolvePath(NbtCompound root, String path) {
@@ -1659,6 +2723,9 @@ public final class NbtRenderOverrideResolver {
                     continue;
                 }
                 if (current instanceof net.minecraft.nbt.NbtList list) {
+                    if ("count".equals(part)) {
+                        return NbtInt.of(list.size());
+                    }
                     Integer index = parseIntIndex(part);
                     if (index == null || index < 0 || index >= list.size()) {
                         return null;
@@ -1692,16 +2759,22 @@ public final class NbtRenderOverrideResolver {
                 return null;
             }
             String[] parts = path.split("\\.");
-            for (int i = 0; i < parts.length - 1; i++) {
-                Integer index = tryParse(parts[i]);
+            for (int i = 0; i < parts.length; i++) {
+                boolean wildcard = "*".equals(parts[i]);
+                Integer index = wildcard ? Integer.valueOf(-1) : tryParse(parts[i]);
                 if (index == null) {
                     continue;
                 }
-                if (i == 0 || i == parts.length - 1) {
+                if (i == 0) {
+                    return null;
+                }
+                if (!wildcard && i == parts.length - 1) {
                     return null;
                 }
                 String listPath = String.join(".", java.util.Arrays.copyOfRange(parts, 0, i));
-                String subPath = String.join(".", java.util.Arrays.copyOfRange(parts, i + 1, parts.length));
+                String subPath = i + 1 < parts.length
+                        ? String.join(".", java.util.Arrays.copyOfRange(parts, i + 1, parts.length))
+                        : "";
                 return new ListIndexPath(listPath, index, subPath);
             }
             return null;
@@ -1735,7 +2808,16 @@ public final class NbtRenderOverrideResolver {
     private record Range(int min, int max) {
     }
 
-    private record ValueMatcher(Mode mode, String value, Pattern regex, boolean ignoreCase) {
+    private record ValueMatcher(
+            Mode mode,
+            String value,
+            Pattern regex,
+            boolean ignoreCase,
+            RangeMatcher rangeMatcher,
+            Boolean existsExpected,
+            boolean raw,
+            boolean negate
+    ) {
         static ValueMatcher parse(String raw) {
             if (raw == null) {
                 return null;
@@ -1745,34 +2827,92 @@ public final class NbtRenderOverrideResolver {
                 return null;
             }
 
+            boolean negate = false;
+            if (value.startsWith("!")) {
+                negate = true;
+                value = value.substring(1).trim();
+            }
+
+            boolean rawMode = false;
+            if (value.startsWith("raw:")) {
+                rawMode = true;
+                value = value.substring("raw:".length());
+            }
+
+            if (value.startsWith("exists:")) {
+                String flag = value.substring("exists:".length()).trim().toLowerCase(Locale.ROOT);
+                Boolean expected = flag.equals("true") ? Boolean.TRUE : flag.equals("false") ? Boolean.FALSE : null;
+                return new ValueMatcher(Mode.EXISTS, value, null, false, null, expected, rawMode, negate);
+            }
+
+            if (value.startsWith("range:")) {
+                String rangeRaw = value.substring("range:".length());
+                RangeMatcher matcher = parseRangeMatcher(rangeRaw);
+                return matcher == null ? null : new ValueMatcher(Mode.RANGE, value, null, false, matcher, null, rawMode, negate);
+            }
+
             if (value.startsWith("regex:")) {
                 String pattern = value.substring("regex:".length());
-                return new ValueMatcher(Mode.REGEX, pattern, Pattern.compile(pattern), false);
+                return new ValueMatcher(Mode.REGEX, pattern, Pattern.compile(pattern), false, null, null, rawMode, negate);
             }
             if (value.startsWith("iregex:")) {
                 String pattern = value.substring("iregex:".length());
-                return new ValueMatcher(Mode.REGEX, pattern, Pattern.compile(pattern, Pattern.CASE_INSENSITIVE), true);
+                return new ValueMatcher(Mode.REGEX, pattern, Pattern.compile(pattern, Pattern.CASE_INSENSITIVE), true, null, null, rawMode, negate);
             }
             if (value.startsWith("pattern:")) {
-                return new ValueMatcher(Mode.PATTERN, value.substring("pattern:".length()), null, false);
+                return new ValueMatcher(Mode.PATTERN, value.substring("pattern:".length()), null, false, null, null, rawMode, negate);
             }
             if (value.startsWith("ipattern:")) {
-                return new ValueMatcher(Mode.PATTERN, value.substring("ipattern:".length()), null, true);
+                return new ValueMatcher(Mode.PATTERN, value.substring("ipattern:".length()), null, true, null, null, rawMode, negate);
             }
 
-            return new ValueMatcher(Mode.EXACT, value, null, false);
+            return new ValueMatcher(Mode.EXACT, value, null, false, null, null, rawMode, negate);
         }
 
-        boolean matches(NbtElement element) {
-            String actual = nbtToComparableString(element);
+        boolean matchesNullable(NbtElement element) {
+            boolean result;
+            if (mode == Mode.EXISTS) {
+                boolean exists = element != null;
+                result = existsExpected == null ? exists : existsExpected == exists;
+            } else {
+                if (element == null) {
+                    result = false;
+                } else {
+                    result = matchesElement(element);
+                }
+            }
+            return negate ? !result : result;
+        }
+
+        private boolean matchesElement(NbtElement element) {
+            if (mode == Mode.RANGE) {
+                Integer number = nbtToInt(element);
+                return number != null && rangeMatcher != null && rangeMatcher.matches(number, number, true);
+            }
+
+            String actual = raw ? element.toString() : nbtToComparableString(element);
             if (actual == null) {
                 return false;
             }
 
+            if (mode == Mode.EXACT) {
+                if (compareExact(actual, value, ignoreCase)) {
+                    return true;
+                }
+                Integer expectedNum = parseIntFlexible(value).orElse(null);
+                if (expectedNum != null) {
+                    Integer actualNum = nbtToInt(element);
+                    if (actualNum != null && actualNum.intValue() == expectedNum.intValue()) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
             return switch (mode) {
-                case EXACT -> compareExact(actual, value, ignoreCase);
                 case PATTERN -> wildcardMatch(actual, value, ignoreCase);
                 case REGEX -> regex.matcher(actual).matches();
+                case RANGE, EXISTS, EXACT -> false;
             };
         }
 
@@ -1789,6 +2929,29 @@ public final class NbtRenderOverrideResolver {
             return element.toString();
         }
 
+        private static Integer nbtToInt(NbtElement element) {
+            if (element instanceof AbstractNbtNumber number) {
+                return number.intValue();
+            }
+            if (element instanceof NbtString nbtString) {
+                String raw = nbtString.asString();
+                Integer parsed = parseIntFlexible(raw).orElse(null);
+                if (parsed != null) {
+                    return parsed;
+                }
+                Identifier id = Identifier.tryParse(raw);
+                if (id != null) {
+                    Integer legacy = LEGACY_STATUS_EFFECT_IDS.get(id);
+                    if (legacy != null) {
+                        return legacy;
+                    }
+                }
+                return null;
+            }
+            String raw = element.toString();
+            return parseIntFlexible(raw).orElse(null);
+        }
+
         private static boolean compareExact(String actual, String expected, boolean ignoreCase) {
             return ignoreCase ? actual.equalsIgnoreCase(expected) : actual.equals(expected);
         }
@@ -1803,6 +2966,8 @@ public final class NbtRenderOverrideResolver {
     private enum Mode {
         EXACT,
         PATTERN,
-        REGEX
+        REGEX,
+        RANGE,
+        EXISTS
     }
 }

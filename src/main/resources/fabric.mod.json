@@ -2,17 +2,14 @@
   "schemaVersion": 1,
   "id": "pcustomtextures",
   "version": "${version}",
-  "name": "pcustomtextures",
-  "description": "",
+  "name": "P-CIT",
+  "description": "Beta build mod for return support CIT Optifine Resource pack",
   "authors": [],
   "contact": {},
   "license": "All-Rights-Reserved",
   "icon": "assets/pcustomtextures/icon.png",
   "environment": "client",
   "entrypoints": {
-    "fabric-datagen": [
-      "com.ponuing.pcustomtextures.client.PcustomtexturesDataGenerator"
-    ],
     "client": [
       "com.ponuing.pcustomtextures.client.PcustomtexturesClient"
     ],

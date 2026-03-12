@@ -11,4 +11,10 @@ public interface ItemRenderStateAccessor {
 
     @Accessor("layerCount")
     int pcustomtextures$getLayerCount();
+
+    @Accessor("modelTransformationMode")
+    void pcustomtextures$setModelTransformationMode(net.minecraft.item.ModelTransformationMode mode);
+
+    @Accessor("leftHand")
+    void pcustomtextures$setLeftHand(boolean leftHand);
 }
