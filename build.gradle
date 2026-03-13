@@ -168,8 +168,8 @@ publishing {
     }
 }
 def lastTagEnv = System.getenv("PREVIOUS_TAG")
-def lastTag = (lastTagEnv == null || lastTagEnv == "NONE") ? null : lastTagEnv
-def newTag = System.getenv("NEW_TAG") ?: "v${project.version}"
+def lastTagValue = (lastTagEnv == null || lastTagEnv == "NONE") ? null : lastTagEnv
+def newTagValue = System.getenv("NEW_TAG") ?: "v${project.version}"
 if (canPublish) {
     def releaseTypeName = project.property("release_type") == "release"
             ? "STABLE"
@@ -179,7 +179,7 @@ if (canPublish) {
 
     TaskProvider<GenerateChangelogTask> generateChangelogTask = null
 
-    if (lastTag != null) {
+    if (lastTagValue != null) {
         def changelogHeader = null
         def addonProp = project.findProperty("changelogHeaderAddon")?.toString()
         if (addonProp != null && !addonProp.isBlank()) {
@@ -190,8 +190,8 @@ if (canPublish) {
         def changelogFileText = changelogFile.exists() ? changelogFile.text : null
 
         generateChangelogTask = tasks.register("generateChangelog", GenerateChangelogTask) {
-            lastTag.set(lastTag)
-            newTag.set(newTag)
+            lastTag.set(lastTagValue)
+            newTag.set(newTagValue)
             githubUrl.set(project.property("github_url").toString())
             prefixFilters.set(project.property("changelog_filter").toString().split(",") as List)
 
@@ -211,8 +211,8 @@ if (canPublish) {
         authorization = System.getenv("GITHUB_TOKEN")?.with { "Bearer $it" }
         owner = project.property("github_owner").toString()
         repo = project.property("github_repo").toString()
-        tagName = newTag
-        releaseName = "${project.property("mod_name")} $newTag"
+        tagName = newTagValue
+        releaseName = "${project.property("mod_name")} $newTagValue"
         targetCommitish = System.getenv("GITHUB_REF_NAME") ?: "HEAD"
         releaseAssets.from(
                 tasks.named("remapJar").get().outputs.files,
