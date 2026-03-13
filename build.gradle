@@ -1,5 +1,6 @@
 import com.ponuing.GenerateChangelogTask
 import com.ponuing.UpdateDependenciesTask
+import com.github.breadmoirai.githubrelease.GithubReleaseTask
 
 plugins {
     id 'fabric-loom' version '1.15-SNAPSHOT'
@@ -203,7 +204,7 @@ if (canPublish) {
             ? providers.provider { generateChangelogTask.get().changelogFile.get().asFile.text }
             : providers.provider { "No Changelog Generated" }
 
-    tasks.named("githubRelease", com.github.breadmoirai.githubrelease.GithubReleaseTask).configure {
+    tasks.named("githubRelease", GithubReleaseTask).configure {
         if (generateChangelogTask != null) {
             dependsOn(generateChangelogTask)
         }
