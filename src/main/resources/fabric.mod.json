@@ -8,9 +8,9 @@
     "ponuing"
   ],
   "contact": {
-    "homepage": "",
-    "sources": "",
-    "issues": ""
+    "homepage": "https://modrinth.com/mod/cit-reborn-mod",
+    "sources": "https://github.com/ponuing/CIT-Reborn",
+    "issues": "https://github.com/ponuing/CIT-Reborn/issues"
   },
   "license": "MIT",
   "icon": "assets/pcit/icon.png",
