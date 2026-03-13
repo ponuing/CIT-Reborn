@@ -1,0 +1,23 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.ponuing.pcit.mixin.client",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "AtlasLoaderMixin",
+    "elytra.ElytraFeatureRendererMixin",
+    "armor.EquipmentRendererMixin",
+    "item.ItemRenderLayerStateAccessor",
+    "item.ItemModelManagerMixin",
+    "item.ItemRenderStateAccessor",
+    "item.ItemRendererMixin",
+    "JsonUnbakedModelDeserializerMixin",
+    "SpriteAtlasManagerAtlasPreparationMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

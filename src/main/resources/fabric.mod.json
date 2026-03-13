@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "pcustomtextures",
+  "id": "pcit",
   "version": "${version}",
   "name": "P-CIT",
   "description": "Beta build mod for return support CIT Optifine Resource pack",
@@ -11,16 +11,16 @@
   "environment": "client",
   "entrypoints": {
     "client": [
-      "com.ponuing.pcustomtextures.client.PcustomtexturesClient"
+      "com.ponuing.pcit.client.PCITClient"
     ],
     "main": [
-      "com.ponuing.pcustomtextures.Pcustomtextures"
+      "com.ponuing.pcit.PCIT"
     ]
   },
   "mixins": [
-    "pcustomtextures.mixins.json",
+    "pcit.mixins.json",
     {
-      "config": "pcustomtextures.client.mixins.json",
+      "config": "pcit.client.mixins.json",
       "environment": "client"
     }
   ],
