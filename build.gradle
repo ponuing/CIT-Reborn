@@ -106,10 +106,6 @@ tasks.register("updateModDependencies", UpdateDependenciesTask) {
 }
 
 def canPublish = System.getenv("RELEASE")?.toBoolean() ?: false
-def githubOwner = project.property("github_owner").toString()
-def githubRepo = project.property("github_repo").toString()
-def githubUrl = project.property("github_url").toString()
-def licenseUrl = project.findProperty("license_url")?.toString()
 
 // configure the maven publication
 publishing {
@@ -125,15 +121,13 @@ publishing {
                 licenses {
                     license {
                         name = "MIT"
-                        if (licenseUrl != null && !licenseUrl.isBlank()) {
-                            url = licenseUrl
-                        }
+                        url = "https://opensource.org/license/mit"
                     }
                 }
                 developers {
                     developer {
                         name = "ponuing"
-                        url = "https://github.com/ponuing"
+                        url = "https://github.com/ponuing/CIT-Reborn"
                     }
                 }
                 scm {
@@ -158,7 +152,7 @@ publishing {
         if (canPublish) {
             maven {
                 name = "GitHubPackages"
-                url = uri("https://maven.pkg.github.com/${githubOwner}/${githubRepo}")
+                url = uri("https://maven.pkg.github.com/ponuing/CIT-Reborn")
                 credentials {
                     username = System.getenv("GITHUB_ACTOR")
                     password = System.getenv("GITHUB_TOKEN")
@@ -192,7 +186,7 @@ if (canPublish) {
         generateChangelogTask = tasks.register("generateChangelog", GenerateChangelogTask) {
             lastTag.set(lastTagValue)
             newTag.set(newTagValue)
-            githubUrl.set(project.property("github_url").toString())
+            githubUrl.set("https://github.com/ponuing/CIT-Reborn")
             prefixFilters.set(project.property("changelog_filter").toString().split(",") as List)
 
             prologue.set([changelogHeader, changelogFileText].findAll { it != null }.join("\n\n"))
