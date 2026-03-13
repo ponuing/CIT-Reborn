@@ -176,7 +176,6 @@ if (canPublish) {
             : project.property("release_type") == "beta"
             ? "BETA"
             : "ALPHA"
-    def releaseTypeClass = Class.forName("me.modmuss50.modpublish.ReleaseType")
 
     TaskProvider<GenerateChangelogTask> generateChangelogTask = null
 
@@ -233,7 +232,8 @@ if (canPublish) {
     if (["CURSEFORGE_TOKEN", "MODRINTH_TOKEN"].any { System.getenv().containsKey(it) }) {
         publishMods {
             changelog = changelogTextProvider
-            type = releaseTypeClass.enumConstants.find { it.name() == releaseTypeName }
+            def enumValue = type.getType().enumConstants.find { it.name() == releaseTypeName }
+            type.set(enumValue)
             modLoaders.add("fabric")
             modLoaders.add("quilt")
             file = tasks.named("remapJar").flatMap { it.archiveFile }

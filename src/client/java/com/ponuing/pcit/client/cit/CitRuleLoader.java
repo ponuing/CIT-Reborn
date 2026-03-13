@@ -1,6 +1,5 @@
 package com.ponuing.pcit.client.cit;
 
-import com.ponuing.pcit.PCIT;
 import com.ponuing.pcit.client.NbtRenderOverrideResolver;
 import com.ponuing.pcit.client.enchantment.EnchantmentBlend;
 import com.ponuing.pcit.client.enchantment.EnchantmentLayer;
