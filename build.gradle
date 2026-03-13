@@ -186,9 +186,8 @@ if (canPublish) {
             changelogHeader = addonProp
         }
 
-        def changelogFileText = rootProject.file("changelogs/${project.property("mod_version")}.md")
-                .takeIf { it.exists() }
-                ?.text
+        def changelogFile = rootProject.file("changelogs/${project.property("mod_version")}.md")
+        def changelogFileText = changelogFile.exists() ? changelogFile.text : null
 
         generateChangelogTask = tasks.register("generateChangelog", GenerateChangelogTask) {
             lastTag.set(lastTag)
