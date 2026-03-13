@@ -1,10 +1,8 @@
-# P-CIT
+# CIT Reborn
 
-OptiFine CIT compatibility layer for Fabric 1.21.4.
+[![Modrinth Downloads](https://img.shields.io/modrinth/dt/3xbZC1Fh?logo=Modrinth&label=Modrinth)](https://modrinth.com/mod/cit-reborn-mod) [![CurseForge Downloads](https://img.shields.io/curseforge/dt/1485026?logo=CurseForge&label=CurseForge)](https://www.curseforge.com/minecraft/mc-mods/cit-reborn)
 
-## Supported CIT sources
-
-- `assets/<namespace>/optifine/cit/**/*.properties` in folder and zip packs.
+OptiFine CIT compatibility layer mod.
 
 ## Supported properties
 
@@ -20,16 +18,4 @@ OptiFine CIT compatibility layer for Fabric 1.21.4.
 - `potion`, `unbreakable`
 - `nbt.*`, `components.*` (alias: `component.*`)
 
-## Match modes
-
-- exact
-- `pattern:` / `ipattern:`
-- `regex:` / `iregex:`
-
-## Notes
-
-- Item render: inventory, hand, world item entity.
-- Item `tile/tiles` uses a flat quad renderer (no 3D model geometry).
-- Armor render: uses OptiFine-style `texture.<name>` mapping.
-- `type=enchantment` supports glint texture overrides; animation settings currently use vanilla timing.
-- Global `cit.properties` effects are not implemented.
+### I would also like to thank [SHsuperCM](https://github.com/SHsuperCM/) for his many years of development and support of the [CIT Resewn mod](https://modrinth.com/mod/cit-resewn). The mod was created using and incorporating the [CIT Resewn source code](https://github.com/SHsuperCM/CITResewn).
