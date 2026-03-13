@@ -22,7 +22,7 @@ public class AtlasLoaderMixin {
     @Shadow @Final private List<AtlasSource> sources;
 
     @Inject(method = "of", at = @At("RETURN"), cancellable = true)
-    private static void pcustomtextures$addOptifineCitSource(ResourceManager resourceManager, Identifier id, CallbackInfoReturnable<AtlasLoader> cir) {
+    private static void pcit$addOptifineCitSource(ResourceManager resourceManager, Identifier id, CallbackInfoReturnable<AtlasLoader> cir) {
         if (id == null) {
             return;
         }

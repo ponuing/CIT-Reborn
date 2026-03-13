@@ -20,6 +20,7 @@ public record CitRule(
         Boolean unbreakable,
         Identifier potion,
         int weight,
+        int packPriority,
         NbtRenderOverrideResolver.HandMatch handMatch,
         Identifier itemModelId,
         CitSourceTexture sourceTexture,
@@ -28,7 +29,8 @@ public record CitRule(
         Map<String, List<Identifier>> itemNamedTextures,
         Map<String, Identifier> itemNamedModels,
         Map<String, List<Identifier>> armorTextures,
-        List<Identifier> elytraTextureCandidates
+        List<Identifier> elytraTextureCandidates,
+        CitEnchantment enchantment
 ) {
     public static final CitRule NO_MATCH = new CitRule(
             CitRuleType.ITEM,
@@ -43,6 +45,7 @@ public record CitRule(
             null,
             null,
             0,
+            0,
             NbtRenderOverrideResolver.HandMatch.ANY,
             null,
             null,
@@ -51,6 +54,7 @@ public record CitRule(
             Map.of(),
             Map.of(),
             Map.of(),
-            List.of()
+            List.of(),
+            null
     );
 }

@@ -404,7 +404,7 @@ public final class CitTextureResolver {
         private SimpleModelBaker(MinecraftClient client, ResourceManager manager) {
             this.client = client;
             this.manager = manager;
-            this.nameSupplier = () -> "pcustomtextures";
+            this.nameSupplier = () -> "pcit";
             this.missingModel = client.getBakedModelManager().getMissingBlockModel();
         }
 

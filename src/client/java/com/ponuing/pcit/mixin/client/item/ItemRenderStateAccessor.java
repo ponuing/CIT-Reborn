@@ -7,14 +7,14 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 @Mixin(ItemRenderState.class)
 public interface ItemRenderStateAccessor {
     @Accessor("layers")
-    ItemRenderState.LayerRenderState[] pcustomtextures$getLayers();
+    ItemRenderState.LayerRenderState[] pcit$getLayers();
 
     @Accessor("layerCount")
-    int pcustomtextures$getLayerCount();
+    int pcit$getLayerCount();
 
     @Accessor("modelTransformationMode")
-    void pcustomtextures$setModelTransformationMode(net.minecraft.item.ModelTransformationMode mode);
+    void pcit$setModelTransformationMode(net.minecraft.item.ModelTransformationMode mode);
 
     @Accessor("leftHand")
-    void pcustomtextures$setLeftHand(boolean leftHand);
+    void pcit$setLeftHand(boolean leftHand);
 }

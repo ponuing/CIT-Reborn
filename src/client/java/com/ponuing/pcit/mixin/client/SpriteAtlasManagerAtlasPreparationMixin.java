@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
 public abstract class SpriteAtlasManagerAtlasPreparationMixin {
 
     @ModifyVariable(method = "getSprite", argsOnly = true, at = @At("HEAD"))
-    private Identifier pcustomtextures$unwrapTexturePaths(Identifier id) {
+    private Identifier pcit$unwrapTexturePaths(Identifier id) {
         if (id.getPath().endsWith(".png")) {
             id = id.withPath(path -> path.substring(0, path.length() - 4));
 

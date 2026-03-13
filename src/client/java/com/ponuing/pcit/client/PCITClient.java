@@ -15,7 +15,7 @@ public class PCITClient implements ClientModInitializer {
         ResourceManagerHelper.get(ResourceType.CLIENT_RESOURCES).registerReloadListener(new SimpleSynchronousResourceReloadListener() {
             @Override
             public Identifier getFabricId() {
-                return Identifier.of("pcustomtextures", "cit_rules");
+                return Identifier.of("pcit", "cit_rules");
             }
 
             @Override

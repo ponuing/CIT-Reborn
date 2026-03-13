@@ -10,20 +10,20 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 @Mixin(ItemRenderState.LayerRenderState.class)
 public interface ItemRenderLayerStateAccessor {
     @Accessor("model")
-    BakedModel pcustomtextures$getModel();
+    BakedModel pcit$getModel();
 
     @Accessor("renderLayer")
-    RenderLayer pcustomtextures$getRenderLayer();
+    RenderLayer pcit$getRenderLayer();
 
     @Accessor("specialModelType")
-    SpecialModelRenderer<?> pcustomtextures$getSpecialModelType();
+    SpecialModelRenderer<?> pcit$getSpecialModelType();
 
     @Accessor("specialModelType")
-    void pcustomtextures$setSpecialModelType(SpecialModelRenderer<?> renderer);
+    void pcit$setSpecialModelType(SpecialModelRenderer<?> renderer);
 
     @Accessor("data")
-    Object pcustomtextures$getSpecialModelData();
+    Object pcit$getSpecialModelData();
 
     @Accessor("data")
-    void pcustomtextures$setSpecialModelData(Object data);
+    void pcit$setSpecialModelData(Object data);
 }

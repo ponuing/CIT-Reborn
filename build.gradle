@@ -1,6 +1,11 @@
+import com.ponuing.GenerateChangelogTask
+import com.ponuing.UpdateDependenciesTask
+
 plugins {
     id 'fabric-loom' version '1.15-SNAPSHOT'
     id 'maven-publish'
+    id 'com.github.breadmoirai.github-release' version '2.5.2'
+    id "me.modmuss50.mod-publish-plugin" version "1.1.0"
 }
 
 version = project.mod_version
@@ -14,11 +19,11 @@ loom {
     splitEnvironmentSourceSets()
     runs {
         client {
-            programArgs(["--username", "BattiBoom1"])
+            programArgs(["--username", "ponuing"])
         }
     }
     mods {
-        "pcustomtextures" {
+        "pcit" {
             sourceSet sourceSets.main
             sourceSet sourceSets.client
         }
@@ -37,6 +42,10 @@ repositories {
     // Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
     // See https://docs.gradle.org/current/userguide/declaring_repositories.html
     // for more information about repositories.
+    maven {
+        name = "Terraformers"
+        url = "https://maven.terraformersmc.com/"
+    }
 }
 
 dependencies {
@@ -46,6 +55,7 @@ dependencies {
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    modImplementation "com.terraformersmc:modmenu:${project.modmenu_version}"
 }
 
 processResources {
@@ -90,12 +100,48 @@ jar {
     }
 }
 
+tasks.register("updateModDependencies", UpdateDependenciesTask) {
+    mcVersion.set(project.property("minecraft_version").toString())
+    loader.set("fabric")
+}
+
+def canPublish = System.getenv("RELEASE")?.toBoolean() ?: false
+def githubOwner = project.property("github_owner").toString()
+def githubRepo = project.property("github_repo").toString()
+def githubUrl = project.property("github_url").toString()
+def licenseUrl = project.findProperty("license_url")?.toString()
+
 // configure the maven publication
 publishing {
     publications {
         create("mavenJava", MavenPublication) {
             artifactId = project.archives_base_name
             from components.java
+
+            pom {
+                name = "CIT Reborn"
+                description = "OptiFine CIT compatibility layer for Fabric ${project.minecraft_version}."
+                url = "https://github.com/ponuing/CIT-Reborn"
+                licenses {
+                    license {
+                        name = "MIT"
+                        if (licenseUrl != null && !licenseUrl.isBlank()) {
+                            url = licenseUrl
+                        }
+                    }
+                }
+                developers {
+                    developer {
+                        name = "ponuing"
+                        url = "https://github.com/ponuing"
+                    }
+                }
+                scm {
+                    connection = "scm:git:git://github.com/ponuing/CIT-Reborn.git"
+                    developerConnection = "scm:git:git://github.com/ponuing/CIT-Reborn.git"
+                    url = "https://github.com/ponuing/CIT-Reborn"
+                }
+            }
         }
     }
 
@@ -105,5 +151,116 @@ publishing {
         // Notice: This block does NOT have the same function as the block in the top level.
         // The repositories here will be used for publishing your artifact, not for
         // retrieving dependencies.
+        if (!System.getenv().containsKey("CI")) {
+            mavenLocal()
+        }
+
+        if (canPublish) {
+            maven {
+                name = "GitHubPackages"
+                url = uri("https://maven.pkg.github.com/${githubOwner}/${githubRepo}")
+                credentials {
+                    username = System.getenv("GITHUB_ACTOR")
+                    password = System.getenv("GITHUB_TOKEN")
+                }
+            }
+        }
+    }
+}
+def lastTagEnv = System.getenv("PREVIOUS_TAG")
+def lastTag = (lastTagEnv == null || lastTagEnv == "NONE") ? null : lastTagEnv
+def newTag = System.getenv("NEW_TAG") ?: "v${project.version}"
+if (canPublish) {
+    def releaseTypeName = project.property("release_type") == "release"
+            ? "STABLE"
+            : project.property("release_type") == "beta"
+            ? "BETA"
+            : "ALPHA"
+    def releaseTypeClass = Class.forName("me.modmuss50.modpublish.ReleaseType")
+
+    TaskProvider<GenerateChangelogTask> generateChangelogTask = null
+
+    if (lastTag != null) {
+        def changelogHeader = null
+        def addonProp = project.findProperty("changelogHeaderAddon")?.toString()
+        if (addonProp != null && !addonProp.isBlank()) {
+            changelogHeader = addonProp
+        }
+
+        def changelogFileText = rootProject.file("changelogs/${project.property("mod_version")}.md")
+                .takeIf { it.exists() }
+                ?.text
+
+        generateChangelogTask = tasks.register("generateChangelog", GenerateChangelogTask) {
+            lastTag.set(lastTag)
+            newTag.set(newTag)
+            githubUrl.set(project.property("github_url").toString())
+            prefixFilters.set(project.property("changelog_filter").toString().split(",") as List)
+
+            prologue.set([changelogHeader, changelogFileText].findAll { it != null }.join("\n\n"))
+        }
+    }
+
+    def changelogTextProvider = generateChangelogTask != null
+            ? providers.provider { generateChangelogTask.get().changelogFile.get().asFile.text }
+            : providers.provider { "No Changelog Generated" }
+
+    tasks.named("githubRelease", com.github.breadmoirai.githubrelease.GithubReleaseTask).configure {
+        if (generateChangelogTask != null) {
+            dependsOn(generateChangelogTask)
+        }
+
+        authorization = System.getenv("GITHUB_TOKEN")?.with { "Bearer $it" }
+        owner = project.property("github_owner").toString()
+        repo = project.property("github_repo").toString()
+        tagName = newTag
+        releaseName = "${project.property("mod_name")} $newTag"
+        targetCommitish = System.getenv("GITHUB_REF_NAME") ?: "HEAD"
+        releaseAssets.from(
+                tasks.named("remapJar").get().outputs.files,
+                tasks.named("remapSourcesJar").get().outputs.files,
+        )
+        subprojects.forEach {
+            releaseAssets.from(
+                    it.tasks.named("remapJar").get().outputs.files,
+                    it.tasks.named("remapSourcesJar").get().outputs.files,
+            )
+        }
+
+        body = changelogTextProvider
+    }
+
+    if (["CURSEFORGE_TOKEN", "MODRINTH_TOKEN"].any { System.getenv().containsKey(it) }) {
+        publishMods {
+            changelog = changelogTextProvider
+            type = releaseTypeClass.enumConstants.find { it.name() == releaseTypeName }
+            modLoaders.add("fabric")
+            modLoaders.add("quilt")
+            file = tasks.named("remapJar").flatMap { it.archiveFile }
+
+            if (System.getenv().containsKey("CURSEFORGE_TOKEN") || dryRun.get()) {
+                curseforge {
+                    projectId = "1485026"
+                    accessToken = providers.environmentVariable("CURSEFORGE_TOKEN")
+                    project.property("game_versions_curse").toString().split(",").each {
+                        minecraftVersions.add(it)
+                    }
+                    displayName.set("${project.property("prefix")} ${project.property("mod_name")} ${project.version}")
+                    requires("fabric-api")
+                }
+            }
+
+            if (System.getenv().containsKey("MODRINTH_TOKEN") || dryRun.get()) {
+                modrinth {
+                    accessToken = providers.environmentVariable("MODRINTH_TOKEN")
+                    projectId = "3xbZC1Fh"
+                    project.property("game_versions_mr").toString().split(",").each {
+                        minecraftVersions.add(it)
+                    }
+                    displayName.set("${project.property("mod_name")} ${project.version}")
+                    requires("fabric-api")
+                }
+            }
+        }
     }
 }

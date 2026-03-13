@@ -18,7 +18,7 @@ public class JsonUnbakedModelDeserializerMixin {
             method = "deserialize(Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Lnet/minecraft/client/render/model/json/JsonUnbakedModel;",
             at = @At("HEAD")
     )
-    private void pcustomtextures$scaleTextureSize(JsonElement json, Type type, com.google.gson.JsonDeserializationContext ctx, CallbackInfoReturnable<JsonUnbakedModel> cir) {
+    private void pcit$scaleTextureSize(JsonElement json, Type type, com.google.gson.JsonDeserializationContext ctx, CallbackInfoReturnable<JsonUnbakedModel> cir) {
         if (json == null || !json.isJsonObject()) {
             return;
         }

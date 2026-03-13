@@ -6,6 +6,7 @@
   "client": [
     "AtlasLoaderMixin",
     "elytra.ElytraFeatureRendererMixin",
+    "enchantment.RenderPhaseAccessor",
     "armor.EquipmentRendererMixin",
     "item.ItemRenderLayerStateAccessor",
     "item.ItemModelManagerMixin",

@@ -2,12 +2,16 @@ package com.ponuing.pcit.client;
 
 import com.ponuing.pcit.PCIT;
 import com.ponuing.pcit.client.cit.CitGeneratedModelDef;
+import com.ponuing.pcit.client.cit.CitEnchantment;
 import com.ponuing.pcit.client.cit.CitMatchers;
 import com.ponuing.pcit.client.cit.CitRule;
 import com.ponuing.pcit.client.cit.CitRuleLoader;
 import com.ponuing.pcit.client.cit.CitRuleType;
 import com.ponuing.pcit.client.cit.CitTextureResolver;
 import com.ponuing.pcit.client.cit.NbtComponentUtils;
+import com.ponuing.pcit.client.enchantment.EnchantmentBlend;
+import com.ponuing.pcit.client.enchantment.EnchantmentGlintRenderLayer;
+import com.ponuing.pcit.client.enchantment.EnchantmentLayer;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.model.BakedModel;
 import net.minecraft.client.texture.Sprite;
@@ -38,6 +42,8 @@ public final class NbtRenderOverrideResolver {
     private static volatile Map<Identifier, Identifier> ITEM_BASE_MODELS = Map.of();
     private static volatile Set<Identifier> EXTRA_ITEM_MODELS = Set.of();
     private static volatile Map<Identifier, List<CitRule>> ITEM_RULES = Map.of();
+    private static volatile boolean HAS_ENCHANTMENT_RULES = false;
+    // ID for compatibility old nbt properties
     public static final Map<Integer, Identifier> LEGACY_ENCHANTMENT_IDS = Map.ofEntries(
             java.util.Map.entry(0, Identifier.of("minecraft", "protection")),
             java.util.Map.entry(1, Identifier.of("minecraft", "fire_protection")),
@@ -154,32 +160,25 @@ public final class NbtRenderOverrideResolver {
             return null;
         }
         ensureLoaded();
-        Identifier itemId = Registries.ITEM.getId(stack.getItem());
-        //Pcustomtextures.LOGGER.info("[pcustomtextures][item] resolve texture for {} x{}", itemId, stack.getCount());
         CitRule rule = findMatchingRule(stack, CitRuleType.ITEM, hand);
         if (rule == null) {
-            //Pcustomtextures.LOGGER.info("[pcustomtextures][item] no matching rule or no texture candidates for {}", itemId);
             return null;
         }
 
         if (rule.sourceTexture() != null) {
             Identifier textureId = rule.sourceTexture().id();
-            //Pcustomtextures.LOGGER.info("[pcustomtextures][item] matched rule, using texture {}", textureId);
             return textureId;
         }
 
         if (rule.itemTextureCandidates().isEmpty()) {
-            //Pcustomtextures.LOGGER.info("[pcustomtextures][item] matched rule but no texture candidates for {}", itemId);
             return null;
         }
 
         Identifier found = CitTextureResolver.findExistingTexture(rule.itemTextureCandidates());
         if (found == null) {
-            //Pcustomtextures.LOGGER.info("[pcustomtextures][item] matched rule but no texture resource found for {}", itemId);
             return null;
         }
 
-        //Pcustomtextures.LOGGER.info("[pcustomtextures][item] matched rule, using texture {}", found);
         return found;
     }
 
@@ -210,6 +209,16 @@ public final class NbtRenderOverrideResolver {
             Identifier textureId,
             Map<String, Identifier> namedTextures,
             Map<String, Identifier> namedModels
+    ) {
+    }
+
+    public record EnchantmentOverride(
+            Identifier textureId,
+            EnchantmentBlend blend,
+            Float speed,
+            Float rotation,
+            Integer duration,
+            Set<EnchantmentLayer> layers
     ) {
     }
 
@@ -248,6 +257,35 @@ public final class NbtRenderOverrideResolver {
             return null;
         }
         return CitTextureResolver.findExistingTexture(rule.elytraTextureCandidates());
+    }
+
+    public static EnchantmentOverride resolveEnchantmentOverride(ItemStack stack, HandMatch hand) {
+        if (stack == null || stack.isEmpty()) {
+            return null;
+        }
+        ensureLoaded();
+        CitRule rule = findMatchingRule(stack, CitRuleType.ENCHANTMENT, hand);
+        if (rule == null) {
+            return null;
+        }
+        CitEnchantment enchantment = rule.enchantment();
+        if (enchantment == null || enchantment.textureCandidates() == null || enchantment.textureCandidates().isEmpty()) {
+            return null;
+        }
+        Identifier textureId = rule.sourceTexture() != null
+                ? rule.sourceTexture().id()
+                : CitTextureResolver.findExistingTexture(enchantment.textureCandidates());
+        if (textureId == null) {
+            return null;
+        }
+        return new EnchantmentOverride(
+                textureId,
+                enchantment.blend(),
+                enchantment.speed(),
+                enchantment.rotation(),
+                enchantment.duration(),
+                enchantment.layers()
+        );
     }
 
     public static Identifier toSpriteId(Identifier textureId) {
@@ -319,6 +357,10 @@ public final class NbtRenderOverrideResolver {
         return null;
     }
 
+    public static boolean hasEnchantmentRules() {
+        return HAS_ENCHANTMENT_RULES;
+    }
+
     private static Map<String, Identifier> resolveNamedTextureOverrides(Map<String, List<Identifier>> namedTextures) {
         if (namedTextures == null || namedTextures.isEmpty()) {
             return Map.of();
@@ -365,7 +407,6 @@ public final class NbtRenderOverrideResolver {
 
     private static void reloadInternalFromManager(ResourceManager manager) {
         try {
-            //Pcustomtextures.LOGGER.info("[pcustomtextures][model] reload start");
             ITEM_BASE_MODELS = CitRuleLoader.loadItemAssetModelsFromManager(manager);
             List<CitRule> parsedRules = CitRuleLoader.scanCitRules(manager);
 
@@ -375,12 +416,15 @@ public final class NbtRenderOverrideResolver {
             ITEM_RULES = indexRulesByItem(parsedRules);
             GENERATED_ITEM_MODELS = CitRuleLoader.buildGeneratedItemModelMap(parsedRules, ITEM_BASE_MODELS);
             EXTRA_ITEM_MODELS = CitRuleLoader.collectExplicitItemModels(parsedRules);
+            HAS_ENCHANTMENT_RULES = parsedRules.stream().anyMatch(rule -> rule.type() == CitRuleType.ENCHANTMENT);
             CitTextureResolver.clearCaches();
+            EnchantmentGlintRenderLayer.clearCache();
 
-            PCIT.LOGGER.info("[pcustomtextures][model] loaded rules={}, genModels={}, explicitModels={}", parsedRules.size(), GENERATED_ITEM_MODELS.size(), EXTRA_ITEM_MODELS.size());
+            PCIT.LOGGER.info("[model] loaded rules={}, genModels={}, explicitModels={}", parsedRules.size(), GENERATED_ITEM_MODELS.size(), EXTRA_ITEM_MODELS.size());
         } catch (Exception e) {
             INITIAL_LOAD_DONE.set(false);
             RULES.clear();
+            HAS_ENCHANTMENT_RULES = false;
             PCIT.LOGGER.error("Failed to reload OptiFine CIT rules", e);
         }
     }
@@ -443,6 +487,12 @@ public final class NbtRenderOverrideResolver {
             }
             if (mode == CitRuleType.ELYTRA && rule.elytraTextureCandidates().isEmpty()) {
                 continue;
+            }
+            if (mode == CitRuleType.ENCHANTMENT) {
+                CitEnchantment enchantment = rule.enchantment();
+                if (enchantment == null || enchantment.textureCandidates() == null || enchantment.textureCandidates().isEmpty()) {
+                    continue;
+                }
             }
             if (!rule.items().contains(itemId)) {
                 continue;

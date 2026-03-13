@@ -58,7 +58,6 @@ public final class PCITModelLoadingPlugin {
             String parentString = def.parentModelId().toString();
             String textureString = toModelTextureString(def.textureId());
         String json = "{\"parent\":\"" + parentString + "\",\"textures\":{\"layer0\":\"" + textureString + "\"}}";
-        //Pcustomtextures.LOGGER.info("[pcustomtextures][model] build model {} parent={} texture={}", id, parentString, textureString);
         UnbakedModel parsed = UnbakedModelDeserializer.deserialize(new StringReader(json));
         return parsed != null ? parsed : model;
         });
@@ -128,7 +127,7 @@ public final class PCITModelLoadingPlugin {
             jsonText = ItemCitResolver.normalizeOptifineModelJson(path, jsonText);
             return JsonUnbakedModel.deserialize(new StringReader(jsonText));
         } catch (Exception e) {
-            PCIT.LOGGER.warn("[pcustomtextures][model] failed to load optifine model {}", id, e);
+            PCIT.LOGGER.warn("[model] failed to load optifine model {}", id, e);
             return null;
         }
     }

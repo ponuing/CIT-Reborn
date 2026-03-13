@@ -1,11 +1,17 @@
 package com.ponuing.pcit.client.cit;
 
+import com.ponuing.pcit.PCIT;
 import com.ponuing.pcit.client.NbtRenderOverrideResolver;
+import com.ponuing.pcit.client.enchantment.EnchantmentBlend;
+import com.ponuing.pcit.client.enchantment.EnchantmentLayer;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.item.Items;
 import net.minecraft.registry.Registries;
 import net.minecraft.resource.Resource;
 import net.minecraft.resource.ResourceFinder;
 import net.minecraft.resource.ResourceManager;
+import net.minecraft.resource.ResourcePackManager;
+import net.minecraft.resource.ResourcePackProfile;
 import net.minecraft.util.Identifier;
 
 import java.io.ByteArrayInputStream;
@@ -68,21 +74,31 @@ public final class CitRuleLoader {
             return rules;
         }
 
+        Map<String, Integer> packOrder = buildPackPriorityMap();
         TextureReader reader = (id) -> readFromManager(manager, id);
         for (String root : CIT_ROOTS) {
             ResourceFinder finder = new ResourceFinder(root + "/cit", ".properties");
-            for (Map.Entry<Identifier, Resource> entry : finder.findResources(manager).entrySet()) {
-                Identifier id = entry.getKey();
-                byte[] bytes = readResourceBytes(entry.getValue());
-                if (bytes == null) {
+            for (Identifier id : finder.findResources(manager).keySet()) {
+                List<Resource> resources = readAllResources(manager, id);
+                if (resources.isEmpty()) {
                     continue;
                 }
-                parseProperties(id.getNamespace(), id.getPath(), bytes, rules, reader);
+                int count = resources.size();
+                for (int index = 0; index < count; index++) {
+                    Resource resource = resources.get(index);
+                    byte[] bytes = readResourceBytes(resource);
+                    if (bytes == null) {
+                        continue;
+                    }
+                    int packPriority = packOrder.getOrDefault(safePackId(resource), 0);
+                    parseProperties(id.getNamespace(), id.getPath(), bytes, rules, reader, packPriority);
+                }
             }
         }
-        scanPotionTextures(manager, rules, reader);
+        scanPotionTextures(manager, rules, reader, packOrder);
 
-        rules.sort(Comparator.comparingInt(CitRule::weight).reversed());
+        rules.sort(Comparator.comparingInt(CitRule::packPriority).reversed()
+                .thenComparing(Comparator.comparingInt(CitRule::weight).reversed()));
         return rules;
     }
 
@@ -99,7 +115,7 @@ public final class CitRuleLoader {
                 Identifier modelId = buildGeneratedModelId(rule.ruleKey(), itemId);
                 Identifier parent = baseModels.getOrDefault(itemId, Identifier.ofVanilla("item/generated"));
                 Identifier textureId = rule.sourceTexture().id();
-                map.put(modelId, new CitGeneratedModelDef(parent, textureId, rule.sourceTexture()));
+                map.putIfAbsent(modelId, new CitGeneratedModelDef(parent, textureId, rule.sourceTexture()));
             }
         }
         return Map.copyOf(map);
@@ -124,7 +140,7 @@ public final class CitRuleLoader {
 
     public static Identifier buildGeneratedModelId(String ruleKey, Identifier itemId) {
         String itemPath = itemId.getNamespace() + "/" + itemId.getPath();
-        return Identifier.of("pcustomtextures", "item/cit/" + ruleKey + "/" + itemPath);
+        return Identifier.of("pcit", "item/cit/" + ruleKey + "/" + itemPath);
     }
 
     public static Map<Identifier, Identifier> loadItemAssetModelsFromManager(ResourceManager manager) {
@@ -182,69 +198,49 @@ public final class CitRuleLoader {
         return Identifier.tryParse(modelObj.get("model").getAsString());
     }
 
-    private static void scanPotionTextures(ResourceManager manager, List<CitRule> rules, TextureReader reader) {
+    private static void scanPotionTextures(ResourceManager manager, List<CitRule> rules, TextureReader reader, Map<String, Integer> packOrder) {
         if (manager == null || rules == null) {
             return;
         }
 
-        addPotionRulesForFolder(manager, rules, reader, "normal", Items.POTION);
-        addPotionRulesForFolder(manager, rules, reader, "splash", Items.SPLASH_POTION);
-        addPotionRulesForFolder(manager, rules, reader, "linger", Items.LINGERING_POTION);
+        addPotionRulesForFolder(manager, rules, reader, packOrder, "normal", Items.POTION);
+        addPotionRulesForFolder(manager, rules, reader, packOrder, "splash", Items.SPLASH_POTION);
+        addPotionRulesForFolder(manager, rules, reader, packOrder, "linger", Items.LINGERING_POTION);
     }
 
-    private static void addPotionRulesForFolder(ResourceManager manager, List<CitRule> rules, TextureReader reader, String folder, net.minecraft.item.Item item) {
+    private static void addPotionRulesForFolder(ResourceManager manager, List<CitRule> rules, TextureReader reader, Map<String, Integer> packOrder, String folder, net.minecraft.item.Item item) {
         for (String root : CIT_ROOTS) {
             ResourceFinder finder = new ResourceFinder(root + "/cit/potion/" + folder, ".png");
-            for (Map.Entry<Identifier, Resource> entry : finder.findResources(manager).entrySet()) {
-                Identifier id = entry.getKey();
-                String path = id.getPath();
-                int slash = path.lastIndexOf('/');
-                String name = slash >= 0 ? path.substring(slash + 1) : path;
-                if (!name.endsWith(".png")) {
+            for (Identifier id : finder.findResources(manager).keySet()) {
+                List<Resource> resources = readAllResources(manager, id);
+                if (resources.isEmpty()) {
                     continue;
                 }
-                name = name.substring(0, name.length() - 4);
-                if (name.isBlank()) {
-                    continue;
-                }
+                int count = resources.size();
+                for (int index = 0; index < count; index++) {
+                    Resource resource = resources.get(index);
+                    int packPriority = packOrder.getOrDefault(safePackId(resource), 0);
+                    String path = id.getPath();
+                    int slash = path.lastIndexOf('/');
+                    String name = slash >= 0 ? path.substring(slash + 1) : path;
+                    if (!name.endsWith(".png")) {
+                        continue;
+                    }
+                    name = name.substring(0, name.length() - 4);
+                    if (name.isBlank()) {
+                        continue;
+                    }
 
-                List<Identifier> textureCandidates = List.of(Identifier.of(id.getNamespace(), path));
-                CitSourceTexture sourceTexture = findFirstTextureBytes(textureCandidates, reader);
-                int weight = -1;
-                String ruleKey = "potion:" + id.getNamespace() + ":" + path;
+                    List<Identifier> textureCandidates = List.of(Identifier.of(id.getNamespace(), path));
+                    byte[] bytes = readResourceBytes(resource);
+                    CitSourceTexture sourceTexture = bytes == null
+                            ? null
+                            : new CitSourceTexture(Identifier.of(id.getNamespace(), path), bytes);
+                    int weight = -1;
+                    String ruleKey = "potion:" + id.getNamespace() + ":" + path;
 
-                if ("empty".equals(name) && "normal".equals(folder)) {
-                    Set<Identifier> items = Set.of(Registries.ITEM.getId(Items.GLASS_BOTTLE));
-                    rules.add(new CitRule(
-                            CitRuleType.ITEM,
-                            items,
-                            List.of(),
-                            null,
-                            null,
-                            null,
-                            null,
-                            Set.of(),
-                            null,
-                            null,
-                            null,
-                            weight,
-                            NbtRenderOverrideResolver.HandMatch.ANY,
-                            null,
-                            sourceTexture,
-                            ruleKey,
-                            textureCandidates,
-                            Map.of(),
-                            Map.of(),
-                            Map.of(),
-                            List.of()
-                    ));
-                    continue;
-                }
-
-                if ("other".equals(name)) {
-                    for (String potionName : NO_EFFECT_POTION_NAMES) {
-                        Identifier potionId = Identifier.of("minecraft", potionName);
-                        Set<Identifier> items = Set.of(Registries.ITEM.getId(item));
+                    if ("empty".equals(name) && "normal".equals(folder)) {
+                        Set<Identifier> items = Set.of(Registries.ITEM.getId(Items.GLASS_BOTTLE));
                         rules.add(new CitRule(
                                 CitRuleType.ITEM,
                                 items,
@@ -256,52 +252,89 @@ public final class CitRuleLoader {
                                 Set.of(),
                                 null,
                                 null,
-                                potionId,
+                                null,
                                 weight,
+                                packPriority,
                                 NbtRenderOverrideResolver.HandMatch.ANY,
                                 null,
                                 sourceTexture,
-                                ruleKey + ":" + potionName,
+                                ruleKey,
                                 textureCandidates,
                                 Map.of(),
                                 Map.of(),
                                 Map.of(),
-                                List.of()
+                                List.of(),
+                                null
                         ));
+                        continue;
                     }
-                    continue;
-                }
 
-                Identifier potionId = Identifier.of("minecraft", name);
-                Set<Identifier> items = Set.of(Registries.ITEM.getId(item));
-                rules.add(new CitRule(
-                        CitRuleType.ITEM,
-                        items,
-                        List.of(),
-                        null,
-                        null,
-                        null,
-                        null,
-                        Set.of(),
-                        null,
-                        null,
-                        potionId,
-                        weight,
-                        NbtRenderOverrideResolver.HandMatch.ANY,
-                        null,
-                        sourceTexture,
-                        ruleKey,
-                        textureCandidates,
-                        Map.of(),
-                        Map.of(),
-                        Map.of(),
-                        List.of()
-                ));
+                    if ("other".equals(name)) {
+                        for (String potionName : NO_EFFECT_POTION_NAMES) {
+                            Identifier potionId = Identifier.of("minecraft", potionName);
+                            Set<Identifier> items = Set.of(Registries.ITEM.getId(item));
+                            rules.add(new CitRule(
+                                    CitRuleType.ITEM,
+                                    items,
+                                    List.of(),
+                                    null,
+                                    null,
+                                    null,
+                                    null,
+                                    Set.of(),
+                                    null,
+                                    null,
+                                    potionId,
+                                    weight,
+                                    packPriority,
+                                    NbtRenderOverrideResolver.HandMatch.ANY,
+                                    null,
+                                    sourceTexture,
+                                    ruleKey + ":" + potionName,
+                                    textureCandidates,
+                                    Map.of(),
+                                    Map.of(),
+                                    Map.of(),
+                                    List.of(),
+                                    null
+                            ));
+                        }
+                        continue;
+                    }
+
+                    Identifier potionId = Identifier.of("minecraft", name);
+                    Set<Identifier> items = Set.of(Registries.ITEM.getId(item));
+                    rules.add(new CitRule(
+                            CitRuleType.ITEM,
+                            items,
+                            List.of(),
+                            null,
+                            null,
+                            null,
+                            null,
+                            Set.of(),
+                            null,
+                            null,
+                            potionId,
+                            weight,
+                            packPriority,
+                            NbtRenderOverrideResolver.HandMatch.ANY,
+                            null,
+                            sourceTexture,
+                            ruleKey,
+                            textureCandidates,
+                            Map.of(),
+                            Map.of(),
+                            Map.of(),
+                            List.of(),
+                            null
+                    ));
+                }
             }
         }
     }
 
-    private static void parseProperties(String defaultNamespace, String propertiesPath, byte[] propertiesBytes, List<CitRule> out, TextureReader reader) {
+    private static void parseProperties(String defaultNamespace, String propertiesPath, byte[] propertiesBytes, List<CitRule> out, TextureReader reader, int packPriority) {
         Properties properties = new Properties();
         try (InputStream in = new ByteArrayInputStream(propertiesBytes);
              InputStreamReader propReader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
@@ -319,6 +352,8 @@ public final class CitRuleLoader {
             ruleType = CitRuleType.ARMOR;
         } else if (type.equals("elytra")) {
             ruleType = CitRuleType.ELYTRA;
+        } else if (type.equals("enchantment")) {
+            ruleType = CitRuleType.ENCHANTMENT;
         } else {
             return;
         }
@@ -336,9 +371,16 @@ public final class CitRuleLoader {
         Map<String, Identifier> itemNamedModels = new HashMap<>();
         Map<String, List<Identifier>> armorTextures = new HashMap<>();
         List<Identifier> elytraTextureCandidates = new ArrayList<>();
+        List<Identifier> enchantmentTextureCandidates = new ArrayList<>();
         CitSourceTexture sourceTexture = null;
         String normalizedPath = propertiesPath == null ? "unknown" : propertiesPath.replace('\\', '/');
         String ruleKey = sha1Hex((defaultNamespace == null ? "" : defaultNamespace + ":") + normalizedPath);
+        EnchantmentBlend enchantmentBlend = EnchantmentBlend.GLINT;
+        Float enchantmentSpeed = null;
+        Float enchantmentRotation = null;
+        Integer enchantmentDuration = null;
+        Set<EnchantmentLayer> enchantmentLayers = null;
+        CitEnchantment enchantment = null;
 
         if (ruleType == CitRuleType.ITEM) {
             String modelRaw = CitPropertyUtils.getProperty(properties, "model");
@@ -438,12 +480,44 @@ public final class CitRuleLoader {
             }
         }
 
+        if (ruleType == CitRuleType.ENCHANTMENT) {
+            String tilesRaw = CitPropertyUtils.getProperty(properties, "tiles");
+            String textureRaw = CitPropertyUtils.getProperty(properties, "texture");
+            String tileRaw = CitPropertyUtils.getProperty(properties, "tile");
+            if (tilesRaw != null && !tilesRaw.isBlank()) {
+                enchantmentTextureCandidates.addAll(parseTilesList(defaultNamespace, propertiesPath, tilesRaw));
+            } else if (textureRaw != null && !textureRaw.isBlank()) {
+                enchantmentTextureCandidates.addAll(parseTextureIdentifiers(defaultNamespace, propertiesPath, textureRaw));
+            } else if (tileRaw != null && !tileRaw.isBlank()) {
+                enchantmentTextureCandidates.addAll(parseTileIdentifiers(defaultNamespace, propertiesPath, tileRaw));
+            }
+
+            if (enchantmentTextureCandidates.isEmpty()) {
+                enchantmentTextureCandidates.addAll(parseImpliedTexture(defaultNamespace, propertiesPath));
+            }
+
+            enchantmentBlend = EnchantmentBlend.parse(CitPropertyUtils.getProperty(properties, "blend"));
+            enchantmentSpeed = parseFloat(CitPropertyUtils.getProperty(properties, "speed")).orElse(null);
+            enchantmentRotation = parseFloat(CitPropertyUtils.getProperty(properties, "rotation")).orElse(null);
+            enchantmentDuration = parseInt(CitPropertyUtils.getProperty(properties, "duration")).orElse(null);
+            enchantmentLayers = parseEnchantmentLayers(CitPropertyUtils.getProperty(properties, "layer"));
+            enchantment = new CitEnchantment(
+                    enchantmentTextureCandidates,
+                    enchantmentBlend,
+                    enchantmentSpeed,
+                    enchantmentRotation,
+                    enchantmentDuration,
+                    enchantmentLayers
+            );
+        }
+
         if (itemModelId == null
                 && itemTextureCandidates.isEmpty()
                 && itemNamedTextures.isEmpty()
                 && itemNamedModels.isEmpty()
                 && armorTextures.isEmpty()
-                && elytraTextureCandidates.isEmpty()) {
+                && elytraTextureCandidates.isEmpty()
+                && (enchantment == null || enchantment.textureCandidates().isEmpty())) {
             return;
         }
 
@@ -476,6 +550,7 @@ public final class CitRuleLoader {
                 unbreakable,
                 potion,
                 weight,
+                packPriority,
                 handMatch,
                 itemModelId,
                 sourceTexture,
@@ -484,7 +559,8 @@ public final class CitRuleLoader {
                 itemNamedTextures,
                 itemNamedModels,
                 armorTextures,
-                elytraTextureCandidates
+                elytraTextureCandidates,
+                enchantment
         ));
     }
 
@@ -559,6 +635,42 @@ public final class CitRuleLoader {
         } catch (Exception e) {
             return Optional.empty();
         }
+    }
+
+    private static Optional<Float> parseFloat(String value) {
+        try {
+            return Optional.of(Float.parseFloat(value.trim()));
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    private static Set<EnchantmentLayer> parseEnchantmentLayers(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        Set<EnchantmentLayer> layers = java.util.EnumSet.noneOf(EnchantmentLayer.class);
+        String normalized = raw.replace(",", " ");
+        for (String tokenRaw : normalized.split("\\s+")) {
+            if (tokenRaw.isBlank()) {
+                continue;
+            }
+            String token = tokenRaw.trim().toLowerCase(Locale.ROOT);
+            if ("all".equals(token) || "any".equals(token)) {
+                return null;
+            }
+            EnchantmentLayer layer = switch (token) {
+                case "0", "glint", "item" -> EnchantmentLayer.GLINT;
+                case "1", "entity" -> EnchantmentLayer.ENTITY;
+                case "2", "armor" -> EnchantmentLayer.ARMOR;
+                case "3", "translucent", "glint_translucent" -> EnchantmentLayer.GLINT_TRANSLUCENT;
+                default -> null;
+            };
+            if (layer != null) {
+                layers.add(layer);
+            }
+        }
+        return layers.isEmpty() ? null : Set.copyOf(layers);
     }
 
     private static Identifier parseItemModelIdentifier(String namespace, String propertiesPath, String raw) {
@@ -773,6 +885,51 @@ public final class CitRuleLoader {
             return bytes != null ? Optional.of(bytes) : Optional.empty();
         } catch (Exception e) {
             return Optional.empty();
+        }
+    }
+
+    private static String safePackId(Resource resource) {
+        if (resource == null) {
+            return "unknown";
+        }
+        try {
+            return resource.getPackId();
+        } catch (Exception e) {
+            return "unknown";
+        }
+    }
+
+    private static Map<String, Integer> buildPackPriorityMap() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null) {
+            return Map.of();
+        }
+        ResourcePackManager manager = client.getResourcePackManager();
+        if (manager == null) {
+            return Map.of();
+        }
+        List<ResourcePackProfile> enabled = new ArrayList<>(manager.getEnabledProfiles());
+        if (enabled.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Integer> order = new HashMap<>();
+        for (int i = 0; i < enabled.size(); i++) {
+            ResourcePackProfile profile = enabled.get(i);
+            if (profile != null) {
+                order.put(profile.getId(), i);
+            }
+        }
+        return order;
+    }
+
+    private static List<Resource> readAllResources(ResourceManager manager, Identifier id) {
+        if (manager == null || id == null) {
+            return List.of();
+        }
+        try {
+            return manager.getAllResources(id);
+        } catch (Exception e) {
+            return List.of();
         }
     }
 

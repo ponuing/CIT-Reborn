@@ -41,7 +41,7 @@ public class ItemModelManagerMixin {
             method = "update(Lnet/minecraft/client/render/item/ItemRenderState;Lnet/minecraft/item/ItemStack;Lnet/minecraft/item/ModelTransformationMode;ZLnet/minecraft/world/World;Lnet/minecraft/entity/LivingEntity;I)V",
             at = @At("TAIL")
     )
-    private void pcustomtextures$applyOverride(ItemRenderState renderState, ItemStack stack, ModelTransformationMode mode, boolean leftHand, World world, LivingEntity entity, int seed, CallbackInfo ci) {
+    private void pcit$applyOverride(ItemRenderState renderState, ItemStack stack, ModelTransformationMode mode, boolean leftHand, World world, LivingEntity entity, int seed, CallbackInfo ci) {
         applyOverride(renderState, stack, mode, leftHand);
     }
 
@@ -49,7 +49,7 @@ public class ItemModelManagerMixin {
             method = "update(Lnet/minecraft/client/render/item/ItemRenderState;Lnet/minecraft/item/ItemStack;Lnet/minecraft/item/ModelTransformationMode;Lnet/minecraft/world/World;Lnet/minecraft/entity/LivingEntity;I)V",
             at = @At("TAIL")
     )
-    private void pcustomtextures$applyOverrideNoHand(ItemRenderState renderState, ItemStack stack, ModelTransformationMode mode, World world, LivingEntity entity, int seed, CallbackInfo ci) {
+    private void pcit$applyOverrideNoHand(ItemRenderState renderState, ItemStack stack, ModelTransformationMode mode, World world, LivingEntity entity, int seed, CallbackInfo ci) {
         applyOverride(renderState, stack, mode, null);
     }
 
@@ -79,10 +79,10 @@ public class ItemModelManagerMixin {
         Map<String, Identifier> namedTextures = override.namedTextures();
         Map<String, Identifier> namedModels = override.namedModels();
         ItemRenderStateAccessor accessor = (ItemRenderStateAccessor) renderState;
-        int count = accessor.pcustomtextures$getLayerCount();
-        ItemRenderState.LayerRenderState layer = count > 0 ? accessor.pcustomtextures$getLayers()[0] : null;
+        int count = accessor.pcit$getLayerCount();
+        ItemRenderState.LayerRenderState layer = count > 0 ? accessor.pcit$getLayers()[0] : null;
         ItemRenderLayerStateAccessor layerAccessor = layer != null ? (ItemRenderLayerStateAccessor) layer : null;
-        boolean hadSpecialRenderer = layerAccessor != null && layerAccessor.pcustomtextures$getSpecialModelType() != null;
+        boolean hadSpecialRenderer = layerAccessor != null && layerAccessor.pcit$getSpecialModelType() != null;
         boolean hasNamedOverrides = (namedTextures != null && !namedTextures.isEmpty())
                 || (namedModels != null && !namedModels.isEmpty());
 
@@ -92,7 +92,7 @@ public class ItemModelManagerMixin {
             }
         }
 
-        BakedModel baseModel = layerAccessor != null ? layerAccessor.pcustomtextures$getModel() : null;
+        BakedModel baseModel = layerAccessor != null ? layerAccessor.pcit$getModel() : null;
         if (modelId == null && namedModels != null && !namedModels.isEmpty()) {
             Identifier namedModelId = selectNamedModelId(baseModel, namedModels);
             if (namedModelId != null) {
@@ -101,7 +101,6 @@ public class ItemModelManagerMixin {
         }
 
         if (modelId != null) {
-            //Pcustomtextures.LOGGER.info("[pcustomtextures][model] override model for {} -> {}", itemId, modelId);
             BakedModel model = client.getBakedModelManager().getModel(new ModelIdentifier(modelId, "inventory"));
             BakedModel missing = client.getBakedModelManager().getMissingBlockModel();
             if (model == null || model == missing) {
@@ -111,14 +110,14 @@ public class ItemModelManagerMixin {
                 }
             }
             if (model == null || model == missing) {
-                PCIT.LOGGER.warn("[pcustomtextures][model] baked model missing for {}", modelId);
+                PCIT.LOGGER.warn("[model] baked model missing for {}", modelId);
                 return;
             }
             Map<String, Sprite> namedSprites = resolveNamedSprites(namedTextures);
             Sprite defaultSprite = textureId != null ? ItemCitResolver.resolveSprite(textureId) : null;
             if (defaultSprite != null || !namedSprites.isEmpty()) {
                 if (defaultSprite == null && textureId != null) {
-                    PCIT.LOGGER.warn("[pcustomtextures][model] sprite missing for texture {}", textureId);
+                    PCIT.LOGGER.warn("[model] sprite missing for texture {}", textureId);
                 }
                 model = new NamedTextureOverrideBakedModel(model, namedSprites, defaultSprite);
             } else if (isMissingSprite(model.getParticleSprite())) {
@@ -135,14 +134,14 @@ public class ItemModelManagerMixin {
                 }
             }
             if (!hasAnyQuads(model)) {
-                PCIT.LOGGER.warn("[pcustomtextures][model] model has no quads, skipping override {}", modelId);
+                PCIT.LOGGER.warn("[model] model has no quads, skipping override {}", modelId);
                 return;
             }
             if (hadSpecialRenderer) {
                 renderState.clear();
-                accessor.pcustomtextures$setModelTransformationMode(mode != null ? mode : ModelTransformationMode.NONE);
+                accessor.pcit$setModelTransformationMode(mode != null ? mode : ModelTransformationMode.NONE);
                 if (leftHand != null) {
-                    accessor.pcustomtextures$setLeftHand(leftHand);
+                    accessor.pcit$setLeftHand(leftHand);
                 }
                 layer = renderState.newLayer();
                 layerAccessor = (ItemRenderLayerStateAccessor) layer;
@@ -150,24 +149,22 @@ public class ItemModelManagerMixin {
                 layer = renderState.newLayer();
                 layerAccessor = (ItemRenderLayerStateAccessor) layer;
             }
-            if (layerAccessor.pcustomtextures$getSpecialModelType() != null) {
-                layerAccessor.pcustomtextures$setSpecialModelType(null);
-                layerAccessor.pcustomtextures$setSpecialModelData(null);
+            if (layerAccessor.pcit$getSpecialModelType() != null) {
+                layerAccessor.pcit$setSpecialModelType(null);
+                layerAccessor.pcit$setSpecialModelData(null);
             }
-            RenderLayer renderLayer = layerAccessor.pcustomtextures$getRenderLayer();
+            RenderLayer renderLayer = layerAccessor.pcit$getRenderLayer();
             if (renderLayer == null) {
                 renderLayer = RenderLayers.getItemLayer(stack);
             }
             if (renderLayer == null) {
                 renderLayer = TexturedRenderLayers.getItemEntityTranslucentCull();
             }
-            //Pcustomtextures.LOGGER.info("[pcustomtextures][model] applying model {} to first layer for {}", modelId, itemId);
             layer.setModel(model, renderLayer);
             return;
         }
 
         if (textureId == null) {
-            //Pcustomtextures.LOGGER.info("[pcustomtextures][model] no override model or texture for {}", itemId);
             if (namedTextures == null || namedTextures.isEmpty()) {
                 return;
             }
@@ -178,32 +175,30 @@ public class ItemModelManagerMixin {
             return;
         }
 
-        layer = accessor.pcustomtextures$getLayers()[0];
+        layer = accessor.pcit$getLayers()[0];
         layerAccessor = (ItemRenderLayerStateAccessor) layer;
 
-        baseModel = layerAccessor.pcustomtextures$getModel();
+        baseModel = layerAccessor.pcit$getModel();
         if (baseModel == null) {
-            //Pcustomtextures.LOGGER.warn("[pcustomtextures][model] base model missing for {}", itemId);
             return;
         }
 
         Map<String, Sprite> namedSprites = resolveNamedSprites(namedTextures);
         Sprite defaultSprite = textureId != null ? ItemCitResolver.resolveSprite(textureId) : null;
         if (defaultSprite == null && textureId != null) {
-            PCIT.LOGGER.warn("[pcustomtextures][model] sprite missing for texture {}", textureId);
+            PCIT.LOGGER.warn("[model] sprite missing for texture {}", textureId);
             if (namedSprites.isEmpty()) {
                 return;
             }
         }
 
-        RenderLayer renderLayer = layerAccessor.pcustomtextures$getRenderLayer();
+        RenderLayer renderLayer = layerAccessor.pcit$getRenderLayer();
         if (renderLayer == null) {
             renderLayer = RenderLayers.getItemLayer(stack);
         }
         if (renderLayer == null) {
             renderLayer = TexturedRenderLayers.getItemEntityTranslucentCull();
         }
-        //Pcustomtextures.LOGGER.info("[pcustomtextures][model] applying texture {} to first layer for {}", textureId, itemId);
         layer.setModel(new NamedTextureOverrideBakedModel(baseModel, namedSprites, defaultSprite), renderLayer);
     }
 
@@ -240,7 +235,7 @@ public class ItemModelManagerMixin {
     private static final Field NO_FIELD = null;
 
     private static boolean applySpecialTextureOverride(ItemRenderLayerStateAccessor layerAccessor, Identifier textureId) {
-        Object renderer = layerAccessor.pcustomtextures$getSpecialModelType();
+        Object renderer = layerAccessor.pcit$getSpecialModelType();
         if (renderer == null || textureId == null) {
             return false;
         }

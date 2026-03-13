@@ -8,11 +8,12 @@ OptiFine CIT compatibility layer for Fabric 1.21.4.
 
 ## Supported properties
 
-- `type=item`, `type=armor`, `type=elytra`
+- `type=item`, `type=armor`, `type=elytra`, `type=enchantment`
 - `items`, `matchItems`
 - `model`, `model.<name>` (item)
 - `tile`, `tiles`, `texture`, `texture.<name>` (item)
 - `texture.<name>` (armor)
+- `texture`, `blend`, `speed`, `rotation`, `layer`, `duration` (enchantment)
 - `weight`
 - `damage`, `damaged`, `stackSize`
 - `enchantments`, `enchantmentIDs`, `enchantmentLevels`
@@ -30,4 +31,5 @@ OptiFine CIT compatibility layer for Fabric 1.21.4.
 - Item render: inventory, hand, world item entity.
 - Item `tile/tiles` uses a flat quad renderer (no 3D model geometry).
 - Armor render: uses OptiFine-style `texture.<name>` mapping.
-- `type=enchantment` and global `cit.properties` effects are not implemented.
+- `type=enchantment` supports glint texture overrides; animation settings currently use vanilla timing.
+- Global `cit.properties` effects are not implemented.

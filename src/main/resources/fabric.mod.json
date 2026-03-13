@@ -2,12 +2,18 @@
   "schemaVersion": 1,
   "id": "pcit",
   "version": "${version}",
-  "name": "P-CIT",
-  "description": "Beta build mod for return support CIT Optifine Resource pack",
-  "authors": [],
-  "contact": {},
-  "license": "All-Rights-Reserved",
-  "icon": "assets/pcustomtextures/icon.png",
+  "name": "Cit Reborn",
+  "description": "Mod for return support CIT Optifine Resource pack's",
+  "authors": [
+    "ponuing"
+  ],
+  "contact": {
+    "homepage": "",
+    "sources": "",
+    "issues": ""
+  },
+  "license": "MIT",
+  "icon": "assets/pcit/icon.png",
   "environment": "client",
   "entrypoints": {
     "client": [
