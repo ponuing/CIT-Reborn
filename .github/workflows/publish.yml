@@ -1,5 +1,5 @@
 name: Publish
-run-name: Publish CIR Reborn
+run-name: Publish CIT Reborn
 
 on:
   workflow_dispatch:
