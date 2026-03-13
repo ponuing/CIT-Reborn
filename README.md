@@ -2,7 +2,9 @@
 
 [![Modrinth Downloads](https://img.shields.io/modrinth/dt/3xbZC1Fh?logo=Modrinth&label=Modrinth)](https://modrinth.com/mod/cit-reborn-mod) [![CurseForge Downloads](https://img.shields.io/curseforge/dt/1485026?logo=CurseForge&label=CurseForge)](https://www.curseforge.com/minecraft/mc-mods/cit-reborn)
 
-OptiFine CIT compatibility layer mod.
+CIT Reborn is a client-side mod that adds support for OptiFine's Custom Item Textures (CIT) format to the Minecraft fabric version.
+
+This mod allows you to dynamically change the appearance of items, armor, elytra, and enchantment visual effects. Textures and models can be customized based on specific conditions, such as renaming an item at an anvil, durability level, stack size, the presence of certain enchantments, hidden NBT tags, and new data components. CIT Reborn provides a fabric alternative to OptiFine for working with custom textures.
 
 ## Supported properties
 
