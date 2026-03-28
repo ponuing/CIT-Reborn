@@ -13,7 +13,9 @@
     "item.ItemRenderStateAccessor",
     "item.ItemRendererMixin",
     "JsonUnbakedModelDeserializerMixin",
-    "SpriteAtlasManagerAtlasPreparationMixin"
+    "ResourceFinderMixin",
+    "SpriteAtlasManagerAtlasPreparationMixin",
+    "SpriteAtlasManagerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

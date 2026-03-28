@@ -6,6 +6,8 @@ import com.ponuing.pcit.client.item.MergedTransformationBakedModel;
 import com.ponuing.pcit.client.item.NamedTextureOverrideBakedModel;
 import com.ponuing.pcit.client.item.TextureOverrideBakedModel;
 import com.ponuing.pcit.client.item.TransformationOverrideBakedModel;
+import com.ponuing.pcit.client.item.TextureOverrideSelection;
+import net.fabricmc.fabric.api.client.model.loading.v1.FabricBakedModelManager;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.item.ItemModelManager;
 import net.minecraft.client.render.RenderLayer;
@@ -33,10 +35,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Mixin(ItemModelManager.class)
 public class ItemModelManagerMixin {
+    private static final Set<String> LOGGED_MISSING_MODELS = ConcurrentHashMap.newKeySet();
+    private static final Set<String> LOGGED_MISSING_SPRITES = ConcurrentHashMap.newKeySet();
+    private static final Set<String> LOGGED_NO_QUADS = ConcurrentHashMap.newKeySet();
     @Inject(
             method = "update(Lnet/minecraft/client/render/item/ItemRenderState;Lnet/minecraft/item/ItemStack;Lnet/minecraft/item/ModelTransformationMode;ZLnet/minecraft/world/World;Lnet/minecraft/entity/LivingEntity;I)V",
             at = @At("TAIL")
@@ -101,8 +107,19 @@ public class ItemModelManagerMixin {
         }
 
         if (modelId != null) {
-            BakedModel model = client.getBakedModelManager().getModel(new ModelIdentifier(modelId, "inventory"));
-            BakedModel missing = client.getBakedModelManager().getMissingBlockModel();
+            var modelManager = client.getBakedModelManager();
+            BakedModel missing = modelManager.getMissingBlockModel();
+            BakedModel model = null;
+            if (modelManager instanceof FabricBakedModelManager fabricManager) {
+                try {
+                    model = fabricManager.getModel(modelId);
+                } catch (Exception ignored) {
+                    model = null;
+                }
+            }
+            if (model == null || model == missing) {
+                model = modelManager.getModel(new ModelIdentifier(modelId, "inventory"));
+            }
             if (model == null || model == missing) {
                 BakedModel baked = ItemCitResolver.resolveModelBaked(modelId);
                 if (baked != null) {
@@ -110,17 +127,22 @@ public class ItemModelManagerMixin {
                 }
             }
             if (model == null || model == missing) {
-                PCIT.LOGGER.warn("[model] baked model missing for {}", modelId);
+                if (modelId != null && LOGGED_MISSING_MODELS.add(modelId.toString())) {
+                    PCIT.LOGGER.warn("[model] baked model missing for {}", modelId);
+                }
                 return;
             }
-            Map<String, Sprite> namedSprites = resolveNamedSprites(namedTextures);
-            Sprite defaultSprite = textureId != null ? ItemCitResolver.resolveSprite(textureId) : null;
+        TextureOverrideSelection overrides = buildTextureOverrides(baseModel, modelId, textureId, namedTextures);
+        Map<String, Sprite> namedSprites = overrides.namedSprites();
+        Sprite defaultSprite = overrides.defaultSprite();
             if (defaultSprite != null || !namedSprites.isEmpty()) {
-                if (defaultSprite == null && textureId != null) {
-                    PCIT.LOGGER.warn("[model] sprite missing for texture {}", textureId);
+                if (defaultSprite == null && textureId != null && namedSprites.isEmpty()) {
+                    if (LOGGED_MISSING_SPRITES.add(textureId.toString())) {
+                        PCIT.LOGGER.warn("[model] sprite missing for texture {}", textureId);
+                    }
                 }
                 model = new NamedTextureOverrideBakedModel(model, namedSprites, defaultSprite);
-            } else if (isMissingSprite(model.getParticleSprite())) {
+            } else if (isMissingSprite(model.getParticleSprite()) && isGeneratedCitModel(modelId)) {
                 Sprite resolved = ItemCitResolver.resolveModelTextureSprite(modelId);
                 if (resolved != null) {
                     model = new TextureOverrideBakedModel(model, resolved);
@@ -134,7 +156,9 @@ public class ItemModelManagerMixin {
                 }
             }
             if (!hasAnyQuads(model)) {
-                PCIT.LOGGER.warn("[model] model has no quads, skipping override {}", modelId);
+                if (modelId != null && LOGGED_NO_QUADS.add(modelId.toString())) {
+                    PCIT.LOGGER.warn("[model] model has no quads, skipping override {}", modelId);
+                }
                 return;
             }
             if (hadSpecialRenderer) {
@@ -183,13 +207,14 @@ public class ItemModelManagerMixin {
             return;
         }
 
-        Map<String, Sprite> namedSprites = resolveNamedSprites(namedTextures);
-        Sprite defaultSprite = textureId != null ? ItemCitResolver.resolveSprite(textureId) : null;
-        if (defaultSprite == null && textureId != null) {
-            PCIT.LOGGER.warn("[model] sprite missing for texture {}", textureId);
-            if (namedSprites.isEmpty()) {
-                return;
+        TextureOverrideSelection overrides = buildTextureOverrides(baseModel, null, textureId, namedTextures);
+        Map<String, Sprite> namedSprites = overrides.namedSprites();
+        Sprite defaultSprite = overrides.defaultSprite();
+        if (defaultSprite == null && textureId != null && namedSprites.isEmpty()) {
+            if (LOGGED_MISSING_SPRITES.add(textureId.toString())) {
+                PCIT.LOGGER.warn("[model] sprite missing for texture {}", textureId);
             }
+            return;
         }
 
         RenderLayer renderLayer = layerAccessor.pcit$getRenderLayer();
@@ -217,7 +242,6 @@ public class ItemModelManagerMixin {
         random.setSeed(seed);
         return !model.getQuads(null, null, random).isEmpty();
     }
-
 
     private static boolean isMissingSprite(Sprite sprite) {
         if (sprite == null) {
@@ -310,6 +334,71 @@ public class ItemModelManagerMixin {
             }
         }
         return sprites.isEmpty() ? Map.of() : sprites;
+    }
+
+    private static TextureOverrideSelection buildTextureOverrides(BakedModel baseModel, Identifier modelId, Identifier textureId, Map<String, Identifier> namedTextures) {
+        Map<String, Sprite> namedSprites = resolveNamedSprites(namedTextures);
+        Sprite defaultSprite = null;
+        if (textureId == null) {
+            return new TextureOverrideSelection(namedSprites, null);
+        }
+        Sprite overrideSprite = ItemCitResolver.resolveSprite(textureId);
+        if (overrideSprite == null) {
+            return new TextureOverrideSelection(namedSprites, null);
+        }
+        String baseKey = resolveBaseTextureKey(baseModel, modelId);
+        if (baseKey != null) {
+            namedSprites = appendNamedSprite(namedSprites, baseKey, overrideSprite);
+            return new TextureOverrideSelection(namedSprites, null);
+        }
+        if (modelId != null) {
+            // Avoid forcing a single texture onto custom models unless a named override matches.
+            return new TextureOverrideSelection(namedSprites, null);
+        }
+        defaultSprite = overrideSprite;
+        return new TextureOverrideSelection(namedSprites, defaultSprite);
+    }
+
+    private static String resolveBaseTextureKey(BakedModel baseModel, Identifier modelId) {
+        if (modelId != null) {
+            Identifier baseTexture = ItemCitResolver.resolveModelTextureId(modelId);
+            if (baseTexture != null) {
+                return baseTexture.toString();
+            }
+        }
+        if (baseModel != null) {
+            Sprite sprite = baseModel.getParticleSprite();
+            if (sprite != null) {
+                try {
+                    Identifier id = sprite.getContents().getId();
+                    if (id != null) {
+                        return id.toString();
+                    }
+                } catch (Exception ignored) {
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static Map<String, Sprite> appendNamedSprite(Map<String, Sprite> namedSprites, String key, Sprite sprite) {
+        if (key == null || sprite == null) {
+            return namedSprites == null ? Map.of() : namedSprites;
+        }
+        if (namedSprites == null || namedSprites.isEmpty()) {
+            return Map.of(key, sprite);
+        }
+        Map<String, Sprite> merged = new HashMap<>(namedSprites);
+        merged.put(key, sprite);
+        return Map.copyOf(merged);
+    }
+
+    private static boolean isGeneratedCitModel(Identifier modelId) {
+        if (modelId == null) {
+            return false;
+        }
+        return "pcit".equals(modelId.getNamespace()) && modelId.getPath().startsWith("item/cit/");
     }
 
     private static Identifier selectNamedModelId(BakedModel baseModel, Map<String, Identifier> namedModels) {

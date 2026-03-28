@@ -1,5 +1,8 @@
 package com.ponuing.pcit.client.cit;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.ponuing.pcit.client.NbtRenderOverrideResolver;
 import com.ponuing.pcit.client.enchantment.EnchantmentBlend;
 import com.ponuing.pcit.client.enchantment.EnchantmentLayer;
@@ -101,8 +104,12 @@ public final class CitRuleLoader {
         return rules;
     }
 
-    public static Map<Identifier, CitGeneratedModelDef> buildGeneratedItemModelMap(List<CitRule> rules, Map<Identifier, Identifier> baseModels) {
+    public static Map<Identifier, CitGeneratedModelDef> buildGeneratedItemModelMap(List<CitRule> rules, Map<Identifier, Identifier> baseModels, ResourceManager manager) {
         Map<Identifier, CitGeneratedModelDef> map = new HashMap<>();
+        if (rules == null || rules.isEmpty()) {
+            return Map.of();
+        }
+        Map<Identifier, Boolean> generatedCache = new HashMap<>();
         for (CitRule rule : rules) {
             if (rule.type() != CitRuleType.ITEM) {
                 continue;
@@ -111,13 +118,21 @@ public final class CitRuleLoader {
                 continue;
             }
             for (Identifier itemId : rule.items()) {
+                Identifier parent;
+                if (rule.itemModelId() != null) {
+                    parent = rule.itemModelId();
+                } else {
+                    parent = baseModels.getOrDefault(itemId, Identifier.ofVanilla("item/generated"));
+                }
+                if (!isGeneratedItemModel(parent, manager, generatedCache, new HashSet<>())) {
+                    continue;
+                }
                 Identifier modelId = buildGeneratedModelId(rule.ruleKey(), itemId);
-                Identifier parent = baseModels.getOrDefault(itemId, Identifier.ofVanilla("item/generated"));
                 Identifier textureId = rule.sourceTexture().id();
                 map.putIfAbsent(modelId, new CitGeneratedModelDef(parent, textureId, rule.sourceTexture()));
             }
         }
-        return Map.copyOf(map);
+        return map.isEmpty() ? Map.of() : Map.copyOf(map);
     }
 
     public static Set<Identifier> collectExplicitItemModels(List<CitRule> rules) {
@@ -402,7 +417,7 @@ public final class CitRuleLoader {
                 itemTextureCandidates.addAll(parseImpliedTexture(defaultNamespace, propertiesPath));
             }
 
-            if (itemModelId == null && !itemTextureCandidates.isEmpty()) {
+            if (!itemTextureCandidates.isEmpty()) {
                 sourceTexture = findFirstTextureBytes(itemTextureCandidates, reader);
             }
 
@@ -769,7 +784,7 @@ public final class CitRuleLoader {
         boolean hasExplicitDir = path.contains("/");
         if (!hasExplicitDir && propertiesPath != null && !propertiesPath.isBlank()) {
             String dir = getResourceDir(namespace, propertiesPath);
-            if (dir != null && !dir.isBlank()) {
+            if (!dir.isBlank()) {
                 addId(ids, namespace, CitTextureResolver.normalizePath(dir + "/" + basePng));
             }
         }
@@ -947,5 +962,133 @@ public final class CitRuleLoader {
             }
         }
         return null;
+    }
+
+    private static boolean isGeneratedItemModel(Identifier modelId, ResourceManager manager, Map<Identifier, Boolean> cache, Set<Identifier> visiting) {
+        if (modelId == null) {
+            return false;
+        }
+        Boolean cached = cache.get(modelId);
+        if (cached != null) {
+            return cached;
+        }
+        if (visiting.contains(modelId)) {
+            return false;
+        }
+        visiting.add(modelId);
+        boolean result = isGeneratedItemModelInternal(modelId, manager, cache, visiting);
+        visiting.remove(modelId);
+        cache.put(modelId, result);
+        return result;
+    }
+
+    private static boolean isGeneratedItemModelInternal(Identifier modelId, ResourceManager manager, Map<Identifier, Boolean> cache, Set<Identifier> visiting) {
+        String modelPath = modelId.getPath();
+        String rawPath = modelPath.startsWith("models/") ? modelPath.substring("models/".length()) : modelPath;
+        boolean optifineModel = CitTextureResolver.isCitRootPath(rawPath);
+        Identifier modelResource = optifineModel
+                ? Identifier.of(modelId.getNamespace(), rawPath + ".json")
+                : Identifier.of(modelId.getNamespace(), "models/" + rawPath + ".json");
+        JsonObject obj = null;
+        if (manager != null) {
+            try {
+                Resource resource = manager.getResource(modelResource).orElse(null);
+                if (resource != null) {
+                    try (InputStream in = resource.getInputStream()) {
+                        String jsonText = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                        if (optifineModel) {
+                            String normalized = CitTextureResolver.normalizeOptifineModelJson(rawPath, jsonText, modelId.getNamespace());
+                            if (normalized != null && !normalized.isBlank()) {
+                                jsonText = normalized;
+                            }
+                        }
+                        JsonElement element = JsonParser.parseString(jsonText);
+                        if (element.isJsonObject()) {
+                            obj = element.getAsJsonObject();
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+                obj = null;
+            }
+        }
+
+        if (obj != null) {
+            JsonElement elementsEl = obj.get("elements");
+            if (elementsEl != null && elementsEl.isJsonArray() && !elementsEl.getAsJsonArray().isEmpty()) {
+                return false;
+            }
+            String parentRaw = null;
+            JsonElement parentEl = obj.get("parent");
+            if (parentEl != null && parentEl.isJsonPrimitive() && parentEl.getAsJsonPrimitive().isString()) {
+                parentRaw = parentEl.getAsString();
+            }
+            if (parentRaw == null || parentRaw.isBlank()) {
+                return isGeneratedParentPath(modelId.getPath());
+            }
+            String resolvedParent = parentRaw.trim().replace("\\", "/");
+            if (optifineModel) {
+                int slash = rawPath.lastIndexOf('/');
+                String dir = slash >= 0 ? rawPath.substring(0, slash) : rawPath;
+                String resolved = CitTextureResolver.resolveOptifineModelPath(dir, resolvedParent);
+                if (resolved != null && !resolved.isBlank()) {
+                    resolvedParent = resolved;
+                }
+            }
+            resolvedParent = stripModelSuffix(resolvedParent);
+            if (resolvedParent.startsWith("builtin/") || resolvedParent.startsWith("minecraft:builtin/")) {
+                return false;
+            }
+            String parentPath = resolvedParent;
+            String parentNamespace = modelId.getNamespace();
+            if (resolvedParent.contains(":")) {
+                Identifier parsed = Identifier.tryParse(resolvedParent);
+                if (parsed != null) {
+                    parentNamespace = parsed.getNamespace();
+                    parentPath = parsed.getPath();
+                }
+            }
+            if (isGeneratedParentPath(parentPath)) {
+                return true;
+            }
+            Identifier parentId = Identifier.tryParse(parentNamespace + ":" + parentPath);
+            if (parentId == null) {
+                return false;
+            }
+            return isGeneratedItemModel(parentId, manager, cache, visiting);
+        }
+
+        return isGeneratedParentPath(modelId.getPath());
+    }
+
+    private static String stripModelSuffix(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String value = raw.trim().replace("\\", "/");
+        if (value.endsWith(".json")) {
+            value = value.substring(0, value.length() - 5);
+        }
+        if (value.startsWith("models/")) {
+            value = value.substring("models/".length());
+        }
+        return value;
+    }
+
+    private static boolean isGeneratedParentPath(String path) {
+        if (path == null || path.isBlank()) {
+            return false;
+        }
+        String normalized = path.replace("\\", "/");
+        if (normalized.contains(":")) {
+            Identifier parsed = Identifier.tryParse(normalized);
+            if (parsed != null) {
+                normalized = parsed.getPath();
+            }
+        }
+        if (normalized.startsWith("item/")) {
+            return true;
+        }
+        return normalized.equals("builtin/generated") || normalized.equals("minecraft:builtin/generated");
     }
 }

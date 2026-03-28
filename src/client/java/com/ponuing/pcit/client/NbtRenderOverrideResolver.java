@@ -232,6 +232,7 @@ public final class NbtRenderOverrideResolver {
             return null;
         }
 
+        Identifier itemId = Registries.ITEM.getId(stack.getItem());
         Identifier textureId = null;
         if (rule.sourceTexture() != null) {
             textureId = rule.sourceTexture().id();
@@ -244,7 +245,16 @@ public final class NbtRenderOverrideResolver {
                 ? Map.of()
                 : Map.copyOf(rule.itemNamedModels());
 
-        return new ItemOverride(rule.itemModelId(), textureId, namedTextures, namedModels);
+        Identifier modelId = rule.itemModelId();
+        if (textureId != null) {
+            Identifier generatedId = CitRuleLoader.buildGeneratedModelId(rule.ruleKey(), itemId);
+            if (GENERATED_ITEM_MODELS.containsKey(generatedId)) {
+                modelId = generatedId;
+                textureId = null;
+            }
+        }
+
+        return new ItemOverride(modelId, textureId, namedTextures, namedModels);
     }
 
     public static Identifier resolveElytraTextureOverride(ItemStack stack) {
@@ -414,7 +424,7 @@ public final class NbtRenderOverrideResolver {
             RULES.addAll(parsedRules);
             RULE_CACHE.clear();
             ITEM_RULES = indexRulesByItem(parsedRules);
-            GENERATED_ITEM_MODELS = CitRuleLoader.buildGeneratedItemModelMap(parsedRules, ITEM_BASE_MODELS);
+            GENERATED_ITEM_MODELS = CitRuleLoader.buildGeneratedItemModelMap(parsedRules, ITEM_BASE_MODELS, manager);
             EXTRA_ITEM_MODELS = CitRuleLoader.collectExplicitItemModels(parsedRules);
             HAS_ENCHANTMENT_RULES = parsedRules.stream().anyMatch(rule -> rule.type() == CitRuleType.ENCHANTMENT);
             CitTextureResolver.clearCaches();
@@ -431,6 +441,10 @@ public final class NbtRenderOverrideResolver {
 
     public static String normalizeOptifineModelJson(String relPath, String jsonText) {
         return CitTextureResolver.normalizeOptifineModelJson(relPath, jsonText);
+    }
+
+    public static String normalizeOptifineModelJson(String relPath, String jsonText, String defaultNamespace) {
+        return CitTextureResolver.normalizeOptifineModelJson(relPath, jsonText, defaultNamespace);
     }
 
     public static boolean matchesTextureName(Identifier spriteId, String nameKey) {

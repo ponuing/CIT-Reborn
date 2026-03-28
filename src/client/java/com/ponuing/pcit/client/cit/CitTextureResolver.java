@@ -33,7 +33,7 @@ import java.util.Set;
 
 public final class CitTextureResolver {
     private static final Identifier ITEM_ATLAS_ID = Identifier.ofVanilla("textures/atlas/items.png");
-    private static final List<String> CIT_ROOTS = List.of("optifine", "mcpatcher", "citresewn");
+    private static final List<String> CIT_ROOTS = List.of("optifine", "mcpatcher", "citresewn", "cit");
     private static final int MODEL_SPRITE_CACHE_LIMIT = 1024;
     private static final Map<Identifier, Sprite> MODEL_SPRITE_CACHE = java.util.Collections.synchronizedMap(
             new LinkedHashMap<>(256, 0.75f, true) {
@@ -84,7 +84,8 @@ public final class CitTextureResolver {
         if (client == null) {
             return null;
         }
-        boolean preferItems = textureId.getPath().startsWith("textures/item/");
+        String texturePath = textureId.getPath();
+        boolean preferItems = texturePath.startsWith("textures/item/");
         Sprite primary = resolveSpriteFromAtlas(client, preferItems ? ITEM_ATLAS_ID : SpriteAtlasTexture.BLOCK_ATLAS_TEXTURE, spriteId);
         if (!isMissingSprite(primary)) {
             return primary;
@@ -156,6 +157,9 @@ public final class CitTextureResolver {
             return null;
         }
         String modelPath = modelId.getPath();
+        if (modelPath.startsWith("models/")) {
+            modelPath = modelPath.substring("models/".length());
+        }
         Identifier modelResource = Identifier.of(modelId.getNamespace(), "models/" + modelPath + ".json");
         Resource resource = client.getResourceManager().getResource(modelResource).orElse(null);
         boolean optifineModel = false;
@@ -176,7 +180,7 @@ public final class CitTextureResolver {
             JsonObject obj = json.getAsJsonObject();
             if (optifineModel) {
                 String jsonText = obj.toString();
-                jsonText = normalizeOptifineModelJson(modelPath, jsonText);
+                jsonText = normalizeOptifineModelJson(modelPath, jsonText, modelId.getNamespace());
                 if (jsonText != null && !jsonText.isBlank()) {
                     json = JsonParser.parseString(jsonText);
                     if (!json.isJsonObject()) {
@@ -228,7 +232,7 @@ public final class CitTextureResolver {
              InputStreamReader reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
             String jsonText = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             if (optifineModel) {
-                jsonText = normalizeOptifineModelJson(rawPath, jsonText);
+                jsonText = normalizeOptifineModelJson(rawPath, jsonText, modelId.getNamespace());
                 return JsonUnbakedModel.deserialize(new java.io.StringReader(jsonText));
             }
             return UnbakedModelDeserializer.deserialize(new java.io.StringReader(jsonText));
@@ -246,6 +250,9 @@ public final class CitTextureResolver {
             return null;
         }
         String modelPath = modelId.getPath();
+        if (modelPath.startsWith("models/")) {
+            modelPath = modelPath.substring("models/".length());
+        }
         Identifier modelResource = Identifier.of(modelId.getNamespace(), "models/" + modelPath + ".json");
         Resource resource = client.getResourceManager().getResource(modelResource).orElse(null);
         boolean optifineModel = false;
@@ -266,7 +273,7 @@ public final class CitTextureResolver {
             JsonObject obj = json.getAsJsonObject();
             if (optifineModel) {
                 String jsonText = obj.toString();
-                jsonText = normalizeOptifineModelJson(modelPath, jsonText);
+                jsonText = normalizeOptifineModelJson(modelPath, jsonText, modelId.getNamespace());
                 if (jsonText != null && !jsonText.isBlank()) {
                     json = JsonParser.parseString(jsonText);
                     if (!json.isJsonObject()) {
@@ -371,6 +378,8 @@ public final class CitTextureResolver {
         return false;
     }
 
+    
+
     private static Identifier resolveOptifineAlias(Identifier textureId) {
         if (textureId == null) {
             return null;
@@ -469,6 +478,10 @@ public final class CitTextureResolver {
     }
 
     public static String normalizeOptifineModelJson(String relPath, String jsonText) {
+        return normalizeOptifineModelJson(relPath, jsonText, null);
+    }
+
+    public static String normalizeOptifineModelJson(String relPath, String jsonText, String defaultNamespace) {
         if (relPath == null || jsonText == null || jsonText.isBlank()) {
             return jsonText;
         }
@@ -497,7 +510,8 @@ public final class CitTextureResolver {
                 String tex = value.getAsString();
                 String resolved = resolveOptifineTexturePath(dir, tex);
                 if (resolved != null) {
-                    textures.addProperty(entry.getKey(), resolved);
+                    String qualified = qualifyNamespace(resolved, defaultNamespace);
+                    textures.addProperty(entry.getKey(), qualified);
                     changed = true;
                 }
             }
@@ -505,9 +519,12 @@ public final class CitTextureResolver {
             if (parentEl != null && parentEl.isJsonPrimitive() && parentEl.getAsJsonPrimitive().isString()) {
                 String parentRaw = parentEl.getAsString();
                 String resolvedParent = resolveOptifineModelPath(dir, parentRaw);
-                if (resolvedParent != null && !resolvedParent.equals(parentRaw)) {
-                    obj.addProperty("parent", resolvedParent);
-                    changed = true;
+                if (resolvedParent != null) {
+                    String qualified = qualifyNamespace(resolvedParent, defaultNamespace);
+                    if (!qualified.equals(parentRaw)) {
+                        obj.addProperty("parent", qualified);
+                        changed = true;
+                    }
                 }
             }
             JsonElement overridesEl = obj.get("overrides");
@@ -524,9 +541,12 @@ public final class CitTextureResolver {
                     }
                     String modelRaw = modelEl.getAsString();
                     String resolvedModel = resolveOptifineModelPath(dir, modelRaw);
-                    if (resolvedModel != null && !resolvedModel.equals(modelRaw)) {
-                        overrideObj.addProperty("model", resolvedModel);
-                        overridesChanged = true;
+                    if (resolvedModel != null) {
+                        String qualified = qualifyNamespace(resolvedModel, defaultNamespace);
+                        if (!qualified.equals(modelRaw)) {
+                            overrideObj.addProperty("model", qualified);
+                            overridesChanged = true;
+                        }
                     }
                 }
                 if (overridesChanged) {
@@ -537,6 +557,19 @@ public final class CitTextureResolver {
         } catch (Exception e) {
             return jsonText;
         }
+    }
+
+    private static String qualifyNamespace(String value, String defaultNamespace) {
+        if (value == null || value.isBlank()) {
+            return value;
+        }
+        if (defaultNamespace == null || defaultNamespace.isBlank()) {
+            return value;
+        }
+        if (value.contains(":")) {
+            return value;
+        }
+        return defaultNamespace + ":" + value;
     }
 
     private static boolean applyTextureSizeScaling(JsonObject obj) {
@@ -598,23 +631,51 @@ public final class CitTextureResolver {
         if (tex == null || tex.isBlank()) {
             return null;
         }
-        if (tex.startsWith("textures/")) {
-            String trimmed = tex.substring("textures/".length());
-            if (isCitRootPath(trimmed)) {
-                return trimmed;
+        String raw = tex.trim().replace("\\", "/");
+        if (raw.startsWith("#")) {
+            return null;
+        }
+        String namespace = null;
+        String value = raw;
+        int colon = raw.indexOf(':');
+        if (colon >= 0) {
+            namespace = raw.substring(0, colon);
+            value = raw.substring(colon + 1);
+        }
+        if (value.endsWith(".png")) {
+            value = value.substring(0, value.length() - 4);
+        }
+        boolean hadTexturesPrefix = false;
+        if (value.startsWith("textures/")) {
+            value = value.substring("textures/".length());
+            hadTexturesPrefix = true;
+        }
+        boolean normalized = false;
+        if (value.startsWith("items/")) {
+            value = "item/" + value.substring("items/".length());
+            normalized = true;
+        } else if (value.startsWith("blocks/")) {
+            value = "block/" + value.substring("blocks/".length());
+            normalized = true;
+        }
+        if (hadTexturesPrefix) {
+            return namespace != null ? namespace + ":" + value : value;
+        }
+        if (value.startsWith("./") || value.startsWith("../")) {
+            String resolved = normalizePath(dir + "/" + value);
+            return namespace != null ? namespace + ":" + resolved : resolved;
+        }
+        if (isCitRootPath(value)) {
+            return namespace != null ? namespace + ":" + value : value;
+        }
+        if (value.startsWith("item/") || value.startsWith("block/") || value.contains(":")) {
+            if (!normalized && namespace == null) {
+                return null;
             }
-            return null;
+            return namespace != null ? namespace + ":" + value : value;
         }
-        if (tex.startsWith("./")) {
-            return dir + "/" + tex.substring(2);
-        }
-        if (isCitRootPath(tex)) {
-            return tex;
-        }
-        if (tex.startsWith("item/") || tex.startsWith("block/") || tex.contains(":")) {
-            return null;
-        }
-        return dir + "/" + tex;
+        String resolved = normalizePath(dir + "/" + value);
+        return namespace != null ? namespace + ":" + resolved : resolved;
     }
 
     public static String resolveOptifineModelPath(String dir, String raw) {
@@ -637,8 +698,8 @@ public final class CitTextureResolver {
         }
 
         String resolved = null;
-        if (path.startsWith("./")) {
-            resolved = dir + "/" + path.substring(2);
+        if (path.startsWith("./") || path.startsWith("../")) {
+            resolved = dir + "/" + path;
         } else if (isCitRootPath(path)) {
             resolved = path;
         } else if (!path.contains("/")) {

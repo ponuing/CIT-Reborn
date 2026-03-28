@@ -110,4 +110,8 @@ public final class ItemCitResolver {
     public static String normalizeOptifineModelJson(String relPath, String jsonText) {
         return NbtRenderOverrideResolver.normalizeOptifineModelJson(relPath, jsonText);
     }
+
+    public static String normalizeOptifineModelJson(String relPath, String jsonText, String defaultNamespace) {
+        return NbtRenderOverrideResolver.normalizeOptifineModelJson(relPath, jsonText, defaultNamespace);
+    }
 }
