@@ -20,4 +20,4 @@ This mod allows you to dynamically change the appearance of items, armor, elytra
 - `potion`, `unbreakable`
 - `nbt.*`, `components.*` (alias: `component.*`)
 
-### I would also like to thank [SHsuperCM](https://github.com/SHsuperCM/) for his many years of development and support of the [CIT Resewn mod](https://modrinth.com/mod/cit-resewn). The mod was created using and incorporating the [CIT Resewn source code](https://github.com/SHsuperCM/CITResewn).
+### I would also like to thank [SHsuperCM](https://github.com/SHsuperCM/) for his many years of development and support of the [CIT Resewn mod](https://modrinth.com/mod/cit-resewn). The mod was based on [CIT Resewn source code](https://github.com/SHsuperCM/CITResewn).
