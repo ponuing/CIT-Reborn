@@ -1,0 +1,21 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.ponuing.mixin",
+  "plugin": "com.ponuing.config.CITRebornMixinConfiguration",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "AtlasLoaderMixin",
+    "AtlasPreparationMixin",
+    "ChatScreenMixin",
+    "ModelLoaderMixin",
+    "ResourceFinderMixin",
+    "broken_paths.AbstractFileResourcePackMixin",
+    "broken_paths.IdentifierMixin",
+    "broken_paths.ReloadableResourceManagerImplMixin",
+    "broken_paths.ResourcePackCompatibilityMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

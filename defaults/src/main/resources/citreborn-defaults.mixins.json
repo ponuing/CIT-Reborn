@@ -1,0 +1,29 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.ponuing.defaults.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "common.ModelLoaderMixin",
+    "types.armor.ArmorFeatureRendererMixin",
+    "types.armor.EquipmentModelLayerMixin",
+    "types.armor.ItemStackMixin",
+    "types.elytra.ElytraFeatureRendererMixin",
+    "types.elytra.ItemStackMixin",
+    "types.enchantment.ElytraFeatureRendererMixin",
+    "types.enchantment.ItemRendererMixin",
+    "types.enchantment.ItemStackMixin",
+    "types.enchantment.MinecraftClientMixin",
+    "types.enchantment.RenderPhaseAccessor",
+    "types.item.BakedModelManagerMixin",
+    "types.item.BasicItemModelInvoker",
+    "types.item.ItemRendererMixin",
+    "types.item.ItemStackMixin",
+    "types.item.JsonUnbakedModelAccessor",
+    "types.item.ModelBakerAccessor",
+    "types.item.ModelLoaderMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

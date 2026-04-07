@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "id": "citreborn-defaults",
+  "version": "${version}",
+  "name": "CIT Reborn: Defaults",
+  "description": "Default types and conditions for CIT Reborn. Based on CIT Resewn",
+  "authors": [
+    "ponuing"
+  ],
+  "license": "MIT",
+  "icon": "assets/citreborn-defaults/logo.png",
+  "contact": {
+    "homepage": "https://modrinth.com/mod/cit-reborn-mod",
+    "sources": "https://github.com/ponuing/CIT-Reborn",
+    "issues": "https://github.com/ponuing/CIT-Reborn/issues"
+  },
+
+  "environment": "client",
+  "accessWidener": "citreborn-defaults.accesswidener",
+  "entrypoints": {
+    "client": [
+      "com.ponuing.defaults.CITRebornDefaultsCompatAPI::initAll"
+    ],
+    "modmenu": [
+      "com.ponuing.defaults.config.CITRebornDefaultsModMenu"
+    ],
+    "citresewn-defaults:config_screen": [
+      "com.ponuing.defaults.config.CITRebornDefaultsConfigScreenFactory::create"
+    ],
+    "citresewn:condition": [
+      "com.ponuing.defaults.cit.conditions.ConditionComponents::CONTAINER",
+      "com.ponuing.defaults.cit.conditions.ConditionDamage::CONTAINER",
+      "com.ponuing.defaults.cit.conditions.ConditionDamageMask::CONTAINER",
+      "com.ponuing.defaults.cit.conditions.ConditionEnchantmentLevels::CONTAINER",
+      "com.ponuing.defaults.cit.conditions.ConditionEnchantments::CONTAINER",
+      "com.ponuing.defaults.cit.conditions.ConditionHand::CONTAINER",
+      "com.ponuing.defaults.cit.conditions.ConditionItems::CONTAINER",
+      "com.ponuing.defaults.cit.conditions.ConditionStackSize::CONTAINER"
+    ],
+    "citresewn:type": [
+      "com.ponuing.defaults.cit.types.TypeArmor::CONTAINER",
+      "com.ponuing.defaults.cit.types.TypeElytra::CONTAINER",
+      "com.ponuing.defaults.cit.types.TypeEnchantment::CONTAINER",
+      "com.ponuing.defaults.cit.types.TypeItem::CONTAINER"
+    ],
+    "citresewn:global_property": [
+      "com.ponuing.defaults.cit.types.TypeEnchantment::globalProperty"
+    ]
+  },
+  "mixins": [
+    "citreborn-defaults.mixins.json"
+  ],
+  "custom": {
+    "modmenu": {
+      "parent": {
+        "id": "citreborn"
+      }
+    }
+  },
+  "depends": {
+    "citreborn": "${version}"
+  },
+  "conflicts": {
+    "eatinganimationid": "<1.9"
+  }
+}

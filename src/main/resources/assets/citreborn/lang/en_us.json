@@ -1,0 +1,26 @@
+{
+  "config.citreborn.title": "CIT Reborn Configuration",
+  "config.citreborn.configure": "Configure",
+
+  "config.citreborn.enabled.title": "Enabled",
+  "config.citreborn.enabled.tooltip": "Should CITRebon load and inject cits from resourcepacks",
+
+  "config.citreborn.mute_errors.title": "Mute loading errors",
+  "config.citreborn.mute_errors.tooltip": "Should CITRebon not log cit errors",
+
+  "config.citreborn.mute_warns.title": "Mute loading warnings",
+  "config.citreborn.mute_warns.tooltip": "Should CITRebon not log cit warnings",
+
+  "config.citreborn.broken_paths.title": "Allow broken paths in resourcepacks",
+  "config.citreborn.broken_paths.tooltip": "Allows packs with illegal resource paths to load.\nMay cause issues!",
+
+  "config.citreborn.cache_ms.title": "Cache",
+  "config.citreborn.cache_ms.tooltip": "How often should the cit cache be refreshed.\nHigher values will give more performance.\nLower values will make cits update faster.\nREALTIME will remove the cache entirely,\n making items check for cits every frame.",
+  "config.citreborn.cache_ms.ticks.0": "REALTIME",
+  "config.citreborn.cache_ms.ticks.1": "EVERY TICK",
+  "config.citreborn.cache_ms.ticks.any": "EVERY %s TICKS",
+
+
+  "pack.incompatible.broken_paths": "(Contains broken paths)",
+  "pack.incompatible.confirm.broken_paths": "This pack contains broken paths and support for it may be dropped in the future. Contact pack author to remove this warning. (~ CITRebon)"
+}

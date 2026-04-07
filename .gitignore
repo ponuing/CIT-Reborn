@@ -4,3 +4,6 @@
 /.gradle/
 /buildSrc/.gradle/
 /buildSrc/build/
+/defaults/build/
+/defaults/.gradle/
+/defaults/run/

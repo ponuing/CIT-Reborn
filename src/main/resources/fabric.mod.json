@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "id": "pcit",
+  "id": "citreborn",
   "version": "${version}",
   "name": "Cit Reborn",
-  "description": "Mod for return support CIT Optifine Resource pack's",
+  "description": "Mod for return support CIT Optifine Resource pack's. Based on CIT Resewn",
   "authors": [
     "ponuing"
   ],
@@ -13,22 +13,26 @@
     "issues": "https://github.com/ponuing/CIT-Reborn/issues"
   },
   "license": "MIT",
-  "icon": "assets/pcit/icon.png",
+  "icon": "assets/citreborn/logo.png",
   "environment": "client",
+  "accessWidener": "citreborn.accesswidener",
   "entrypoints": {
     "client": [
-      "com.ponuing.pcit.client.PCITClient"
+      "com.ponuing.CITReborn"
     ],
-    "main": [
-      "com.ponuing.pcit.PCIT"
+    "modmenu": [
+      "com.ponuing.config.CITRebornModMenu"
+    ],
+    "citresewn:condition": [
+      "com.ponuing.cit.builtin.conditions.core.FallbackCondition::CONTAINER",
+      "com.ponuing.cit.builtin.conditions.core.WeightCondition::CONTAINER"
+    ],
+    "citresewn:global_property": [
+      "com.ponuing.cit.builtin.conditions.core.FallbackCondition::globalProperty"
     ]
   },
   "mixins": [
-    "pcit.mixins.json",
-    {
-      "config": "pcit.client.mixins.json",
-      "environment": "client"
-    }
+    "citreborn.mixins.json"
   ],
   "depends": {
     "fabricloader": ">=${loader_version}",
